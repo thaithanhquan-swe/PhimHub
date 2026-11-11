@@ -56,15 +56,21 @@ const PROVIDER_CONFIGS: Record<
   },
 };
 
-// Current active provider with localStorage persistence
+// Current active provider (PhimAPI is the rock-solid primary)
 const STORAGE_KEY = "phimhub_active_provider";
-let activeProvider: ApiProviderId = (() => {
-  if (typeof window !== "undefined") {
-    const saved = localStorage.getItem(STORAGE_KEY) as ApiProviderId;
-    if (saved === "phimapi" || saved === "nguonc") return saved;
+let activeProvider: ApiProviderId = "phimapi";
+
+// Ensure we don't stay locked into broken NguonC from any previous session
+if (typeof window !== "undefined") {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === "nguonc") {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage errors
   }
-  return "phimapi"; // PhimAPI is the primary stable provider
-})();
+}
 
 const providerHealth: Record<ApiProviderId, { status: "online" | "degraded" | "offline"; lastError?: string; lastChecked: number }> = {
   phimapi: { status: "online", lastChecked: Date.now() },
@@ -82,9 +88,6 @@ export function getActiveProvider(): ApiProviderId {
 export function setActiveProvider(newProvider: ApiProviderId): void {
   if (activeProvider !== newProvider) {
     activeProvider = newProvider;
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, newProvider);
-    }
     notifyListeners();
   }
 }
@@ -203,6 +206,11 @@ async function executeWithFailover<T>(
     providerHealth[primary] = { status: "online", lastChecked: Date.now() };
     return { data, provider: primary };
   } catch (primaryErr) {
+    // CRITICAL: If aborted by React unmount / page navigation, do NOT treat as provider failure!
+    if (primaryErr instanceof Error && (primaryErr.name === "AbortError" || primaryErr.message.includes("aborted"))) {
+      throw primaryErr;
+    }
+
     const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
     console.warn(`[Failover] Nguồn ${PROVIDER_CONFIGS[primary].name} gặp sự cố (${errMsg}). Tự động luân phiên sang ${PROVIDER_CONFIGS[fallback].name}...`);
 
@@ -220,6 +228,9 @@ async function executeWithFailover<T>(
       setActiveProvider(fallback);
       return { data, provider: fallback };
     } catch (fallbackErr) {
+      if (fallbackErr instanceof Error && (fallbackErr.name === "AbortError" || fallbackErr.message.includes("aborted"))) {
+        throw fallbackErr;
+      }
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
       providerHealth[fallback] = {
         status: "offline",

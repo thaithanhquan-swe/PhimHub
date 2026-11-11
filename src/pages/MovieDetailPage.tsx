@@ -15,6 +15,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { RequestError } from "@/components/RequestState";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
@@ -337,27 +338,19 @@ export function MovieDetailPage() {
             </div>
           )}
 
-          {/* Player Iframe with fallback to M3U8 Player */}
-          {hasEpisodes && (currentEpisode?.embed || currentEpisode?.m3u8) ? (
+          {/* Native High-Performance Video Player (M3U8 with HLS.js + Embed Fallback) */}
+          {hasEpisodes && currentEpisode ? (
             <div>
-              <div className="aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10">
-                <iframe
-                  key={currentEpisode.embed || currentEpisode.m3u8}
-                  src={
-                    currentEpisode.embed ||
-                    (currentEpisode.m3u8
-                      ? `https://player.phimapi.com/player/?url=${encodeURIComponent(currentEpisode.m3u8)}`
-                      : "")
-                  }
-                  title={`${movie.title} - ${currentEpisode.name}`}
-                  className="size-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  referrerPolicy="origin"
-                />
-              </div>
+              <VideoPlayer
+                key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}`}
+                m3u8Url={currentEpisode.m3u8}
+                embedUrl={currentEpisode.embed}
+                title={`${movie.title} - ${currentEpisode.name}`}
+                poster={getBackdropUrl(movie)}
+                autoPlay={true}
+              />
 
-              {/* Real-time streaming source info */}
+              {/* Real-time streaming source info (Read-only status) */}
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">
                 <div className="flex items-center gap-2">
                   <span>Máy chủ nguồn:</span>
@@ -366,7 +359,7 @@ export function MovieDetailPage() {
                 {currentEpisode?.m3u8 && (
                   <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Luồng M3U8 trực tiếp sẵn sàng</span>
+                    <span>Phát trực tiếp HLS (M3U8) tốc độ cao</span>
                   </span>
                 )}
               </div>
@@ -375,7 +368,7 @@ export function MovieDetailPage() {
             <div className="flex aspect-video w-full flex-col items-center justify-center rounded-md bg-[#1d1d1d] text-center text-white/60">
               <Film className="mb-2 size-10 text-white/40" />
               <p className="text-sm font-medium">Tập phim đang được cập nhật</p>
-              <p className="mt-1 text-xs text-white/40">Vui lòng thử đổi nguồn phát hoặc quay lại sau ít phút.</p>
+              <p className="mt-1 text-xs text-white/40">Vui lòng quay lại sau ít phút.</p>
               <div className="mt-3">
                 <ProviderStatusBadge />
               </div>
