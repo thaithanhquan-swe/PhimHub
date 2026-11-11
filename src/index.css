@@ -153,6 +153,13 @@ a {
   }
 }
 
+/* Mobile landscape optimizations */
+@media (orientation: landscape) and (max-height: 520px) {
+  .mobile-bottom-nav {
+    display: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
