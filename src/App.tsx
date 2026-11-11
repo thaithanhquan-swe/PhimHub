@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { Navbar } from "@/components/Navbar";
-import { AuthPage } from "@/pages/AuthPage";
+import { WatchHistoryProvider } from "@/context/WatchHistoryContext";
+import { WatchlistProvider } from "@/context/WatchlistContext";
 import { HomePage } from "@/pages/HomePage";
 import { MovieDetailPage } from "@/pages/MovieDetailPage";
+import { SchedulePage } from "@/pages/SchedulePage";
 import { SearchPage } from "@/pages/SearchPage";
-import { WatchlistProvider } from "@/context/WatchlistContext";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -19,17 +20,14 @@ function ScrollToTop() {
 }
 
 function AppRoutes() {
-  const { pathname } = useLocation();
-  const isAuthPage = pathname === "/auth";
-
   return (
     <>
-      {!isAuthPage && <Navbar />}
+      <Navbar />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/movie/:id" element={<MovieDetailPage />} />
+        <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/auth" element={<AuthPage />} />
         <Route
           path="*"
           element={
@@ -42,11 +40,9 @@ function AppRoutes() {
           }
         />
       </Routes>
-      {!isAuthPage && (
-        <footer className="border-t border-white/10 px-4 py-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
-          Dữ liệu phim được cung cấp bởi nguonc.com. PhimHub — Xem phim chất lượng cao trực tuyến.
-        </footer>
-      )}
+      <footer className="border-t border-white/10 px-4 py-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
+        Dữ liệu phim được cung cấp bởi nguonc.com. PhimHub — Xem phim chất lượng cao trực tuyến.
+      </footer>
     </>
   );
 }
@@ -55,8 +51,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <WatchlistProvider>
-        <ScrollToTop />
-        <AppRoutes />
+        <WatchHistoryProvider>
+          <ScrollToTop />
+          <AppRoutes />
+        </WatchHistoryProvider>
       </WatchlistProvider>
     </BrowserRouter>
   );
