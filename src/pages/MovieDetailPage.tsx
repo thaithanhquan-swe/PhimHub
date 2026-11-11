@@ -140,6 +140,17 @@ export function MovieDetailPage() {
   const currentServer = movie.episodes?.[currentServerIndex];
   const currentEpisode = currentServer?.items?.[currentEpisodeIndex];
   const hasEpisodes = Boolean(movie.episodes && movie.episodes.length > 0 && currentEpisode);
+  const hasNextEpisode = Boolean(
+    currentServer &&
+    currentServer.items &&
+    currentEpisodeIndex < currentServer.items.length - 1
+  );
+
+  function handleNextEpisode() {
+    if (hasNextEpisode) {
+      setCurrentEpisodeIndex((prev) => prev + 1);
+    }
+  }
 
   function scrollToPlayer() {
     playerRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -345,9 +356,12 @@ export function MovieDetailPage() {
                 key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}`}
                 m3u8Url={currentEpisode.m3u8}
                 embedUrl={currentEpisode.embed}
-                title={`${movie.title} - ${currentEpisode.name}`}
+                title={movie.title}
+                episodeName={currentEpisode.name}
                 poster={getBackdropUrl(movie)}
                 autoPlay={true}
+                hasNextEpisode={hasNextEpisode}
+                onNextEpisode={handleNextEpisode}
               />
 
               {/* Real-time streaming source info (Read-only status) */}
