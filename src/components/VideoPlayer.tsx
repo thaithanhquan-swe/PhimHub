@@ -90,7 +90,8 @@ export function VideoPlayer({
   const [useEmbedFallback, setUseEmbedFallback] = useState(preferEmbed);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isRotationFallback, setIsRotationFallback] = useState(false);
+  const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
+  const [isManualFullscreen, setIsManualFullscreen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio">("main");
   const [seekFeedback, setSeekFeedback] = useState<string | null>(null);
@@ -438,19 +439,27 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Clear the CSS rotation when the device is physically turned to landscape.
+  // Expand the player when a touch device is physically turned to landscape.
   useEffect(() => {
+    const updateOrientation = () => {
+      const isMobileLandscape =
+        window.innerWidth > window.innerHeight &&
+        (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches);
+      setIsDeviceLandscape(isMobileLandscape);
+    };
     const handleOrientationChange = () => {
-      if (window.innerWidth > window.innerHeight) {
-        setIsRotationFallback(false);
+      updateOrientation();
+      if (window.innerWidth <= window.innerHeight) {
+        setIsManualFullscreen(false);
       }
     };
 
+    updateOrientation();
     window.addEventListener("orientationchange", handleOrientationChange);
-    window.addEventListener("resize", handleOrientationChange);
+    window.addEventListener("resize", updateOrientation);
     return () => {
       window.removeEventListener("orientationchange", handleOrientationChange);
-      window.removeEventListener("resize", handleOrientationChange);
+      window.removeEventListener("resize", updateOrientation);
     };
   }, []);
 
@@ -628,38 +637,56 @@ export function VideoPlayer({
     }
   }
 
-  // Use native orientation locking when available, with a CSS rotation fallback.
+  // Use native fullscreen/orientation APIs; never rotate iframe controls sideways.
   async function handleRotateScreen() {
     const container = containerRef.current;
     if (!container) return;
 
-    const orientation = screen.orientation as ScreenOrientation & {
-      lock?: (orientation: "landscape") => Promise<void>;
-      unlock?: () => void;
-    };
+    const orientation = screen.orientation as
+      | (ScreenOrientation & {
+          lock?: (orientation: "landscape") => Promise<void>;
+          unlock?: () => void;
+        })
+      | undefined;
 
-    if (isRotationFallback) {
-      setIsRotationFallback(false);
+    const video = videoRef.current;
+    const isCurrentlyFullscreen = Boolean(
+      document.fullscreenElement ||
+      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
+      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+    );
+
+    if (isCurrentlyFullscreen || isManualFullscreen) {
+      setIsManualFullscreen(false);
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
+      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
+        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      } else if (video && "webkitExitFullscreen" in video) {
+        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
       }
-      orientation.unlock?.();
+      orientation?.unlock?.();
+      return;
+    }
+
+    if (video && "webkitEnterFullscreen" in video) {
+      (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
       return;
     }
 
     try {
-      if (container.requestFullscreen && orientation.lock) {
+      if (container.requestFullscreen) {
         await container.requestFullscreen();
-        await orientation.lock("landscape");
+        if (orientation?.lock) {
+          await orientation.lock("landscape");
+        }
         return;
       }
     } catch {
-      // Some browsers reject fullscreen or orientation locking; keep playback usable.
+      // Fall back to an upright in-page fullscreen player when the browser denies fullscreen.
     }
 
-    if (window.innerWidth <= window.innerHeight) {
-      setIsRotationFallback(true);
-    }
+    setIsManualFullscreen(true);
   }
 
   async function togglePiP() {
@@ -704,7 +731,7 @@ export function VideoPlayer({
         ref={containerRef}
         className={cn(
           "relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 group/embed",
-          isRotationFallback && "player-landscape-fallback",
+          (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
         )}
       >
         {m3u8Url && (
@@ -720,8 +747,8 @@ export function VideoPlayer({
           type="button"
           onClick={handleRotateScreen}
           className="absolute left-2 top-2 z-30 grid size-9 place-items-center rounded-full bg-black/70 text-white/90 backdrop-blur-sm hover:bg-black"
-          title={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
-          aria-label={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
+          title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
+          aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
         >
           <Smartphone className="size-4 rotate-90 text-primary" />
         </button>
@@ -751,7 +778,7 @@ export function VideoPlayer({
       className={cn(
         "group relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 select-none",
         !showControls && isPlaying && "cursor-none",
-        isRotationFallback && "player-landscape-fallback",
+        (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
       )}
     >
       {/* Native HTML5 Video Player */}
@@ -1156,8 +1183,8 @@ export function VideoPlayer({
               type="button"
               onClick={handleRotateScreen}
               className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
-              title={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
-              aria-label={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
+              title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
+              aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
             >
               <Smartphone className="size-4 rotate-90 text-primary" />
             </button>
