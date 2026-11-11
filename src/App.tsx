@@ -44,7 +44,7 @@ function AppRoutes() {
       </Routes>
       {!isAuthPage && (
         <footer className="border-t border-white/10 px-4 py-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
-          This product uses the TMDB API but is not endorsed or certified by TMDB.
+          Dữ liệu phim được cung cấp bởi nguonc.com. PhimHub — Xem phim chất lượng cao trực tuyến.
         </footer>
       )}
     </>
