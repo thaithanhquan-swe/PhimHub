@@ -40,7 +40,7 @@ function AppRoutes() {
           }
         />
       </Routes>
-      <footer className="border-t border-white/10 px-4 pt-6 pb-24 lg:pb-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
+      <footer className="border-t border-white/10 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
         Dữ liệu phim từ PhimAPI & NguonC. PhimHub — Nền tảng xem phim trực tuyến đa nguồn tốc độ cao.
       </footer>
     </>

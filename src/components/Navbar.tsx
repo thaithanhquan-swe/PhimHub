@@ -133,7 +133,7 @@ export function Navbar() {
     <>
       <header
         className={cn(
-          "fixed inset-x-0 top-0 z-50 flex h-[62px] sm:h-[66px] lg:h-[72px] items-center gap-2 sm:gap-4 lg:gap-6 px-3 sm:px-[4.5%] text-white transition-all duration-300",
+          "fixed inset-x-0 top-0 z-50 flex h-[62px] sm:h-[66px] lg:h-[72px] items-center gap-2 sm:gap-4 lg:gap-6 px-3 sm:px-[4.5%] text-white transition-all duration-300 pt-[env(safe-area-inset-top,0px)]",
           scrolled
             ? "bg-[#121212]/95 backdrop-blur-md shadow-xl border-b border-white/5"
             : "bg-gradient-to-b from-black/90 via-black/50 to-transparent",
@@ -143,13 +143,13 @@ export function Navbar() {
         <button
           type="button"
           onClick={() => setMobileMenuOpen(true)}
-          className="grid size-9 place-items-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 lg:hidden shrink-0"
+          className="grid size-9 place-items-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 active:scale-95 lg:hidden shrink-0"
           aria-label="Mở menu danh mục"
         >
           <Menu className="size-5" />
         </button>
 
-        <Link to="/" className="group shrink-0" aria-label="PhimHub - Trang chủ">
+        <Link to="/" className="group shrink-0 flex items-center" aria-label="PhimHub - Trang chủ">
           <Logo />
         </Link>
 
@@ -200,8 +200,8 @@ export function Navbar() {
         </nav>
 
         {/* Responsive Search Bar + Real-time Provider Status Badge */}
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-1 max-w-[220px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
-          <ProviderStatusBadge className="shrink-0" />
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-1 max-w-[200px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
+          <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
 
           <form onSubmit={submitSearch} className="flex-1 min-w-[95px] sm:min-w-[140px]">
             <div className="relative flex h-9 sm:h-10 w-full items-center gap-2 rounded-full border border-white/20 bg-black/50 px-3 sm:px-4 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/80">
@@ -349,7 +349,7 @@ export function Navbar() {
 
       {/* Mobile Bottom Navigation (5 tabs) */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#121212]/95 backdrop-blur-lg py-1.5 lg:hidden shadow-2xl"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#121212]/95 backdrop-blur-lg pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] lg:hidden shadow-2xl mobile-bottom-nav"
         aria-label="Điều hướng di động"
       >
         {[
@@ -365,12 +365,12 @@ export function Navbar() {
               key={id}
               to={to}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 py-1 text-[10px] font-medium transition-colors",
+                "flex flex-col items-center justify-center gap-0.5 py-1 min-h-[44px] text-[10px] font-medium transition-all active:scale-95 select-none",
                 active ? "text-primary font-bold" : "text-white/60 hover:text-white",
               )}
             >
-              <Icon className="size-4.5" />
-              <span className="truncate max-w-[56px] text-center">{label}</span>
+              <Icon className="size-4.5 shrink-0" />
+              <span className="truncate max-w-[62px] text-center leading-tight">{label}</span>
             </Link>
           );
         })}
