@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
 import { Hero } from "@/components/Hero";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
@@ -73,7 +74,14 @@ export function HomePage() {
         </div>
       )}
 
-      <div className={savedOnly ? "mt-6" : "relative z-10 -mt-8 sm:-mt-12"}>
+      {/* Continue Watching Section (only renders if watch history exists) */}
+      {!savedOnly && (
+        <div className="relative z-20 mt-4 sm:mt-6">
+          <ContinueWatchingRow />
+        </div>
+      )}
+
+      <div className={savedOnly ? "mt-6" : "relative z-10 -mt-2 sm:-mt-4"}>
         {visibleSections.map((section) => (
           <MovieRow
             key={section.title}

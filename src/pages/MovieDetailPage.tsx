@@ -3,6 +3,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Film,
+  History,
   Play,
   Share2,
   Tv,
@@ -13,6 +14,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
 import { RequestError } from "@/components/RequestState";
+import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,8 @@ export function MovieDetailPage() {
 
   const playerRef = useRef<HTMLDivElement>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
+  const { saveProgress, getProgress } = useWatchHistory();
+  const [resumedFromHistory, setResumedFromHistory] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -43,14 +47,43 @@ export function MovieDetailPage() {
     setError("");
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
+    setResumedFromHistory(false);
 
     getMovieDetails(id, controller.signal)
       .then((data) => {
         setMovie(data);
-        if (autoPlay) {
+
+        // Resume from query param or previous watch history
+        const paramServer = searchParams.get("server");
+        const paramEp = searchParams.get("ep");
+        const progress = getProgress(id);
+
+        let sIdx = 0;
+        let eIdx = 0;
+        let wasResumed = false;
+
+        if (paramServer !== null && paramEp !== null) {
+          sIdx = Math.max(0, parseInt(paramServer, 10) || 0);
+          eIdx = Math.max(0, parseInt(paramEp, 10) || 0);
+          wasResumed = true;
+        } else if (progress) {
+          sIdx = progress.serverIndex || 0;
+          eIdx = progress.episodeIndex || 0;
+          wasResumed = true;
+        }
+
+        if (data.episodes && data.episodes[sIdx]) {
+          setCurrentServerIndex(sIdx);
+          if (data.episodes[sIdx].items[eIdx]) {
+            setCurrentEpisodeIndex(eIdx);
+          }
+        }
+        setResumedFromHistory(wasResumed);
+
+        if (autoPlay || wasResumed) {
           setTimeout(() => {
             playerRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 400);
+          }, 450);
         }
       })
       .catch((reason: unknown) => {
@@ -61,6 +94,29 @@ export function MovieDetailPage() {
 
     return () => controller.abort();
   }, [id, autoPlay]);
+
+  // Auto-save watch progress whenever episode changes
+  useEffect(() => {
+    if (!movie || !movie.episodes || movie.episodes.length === 0) return;
+    const server = movie.episodes[currentServerIndex];
+    const episode = server?.items?.[currentEpisodeIndex];
+    if (!server || !episode) return;
+
+    saveProgress({
+      movieId: movie.id,
+      slug: movie.slug,
+      title: movie.title,
+      posterUrl: movie.posterUrl,
+      backdropUrl: movie.backdropUrl,
+      serverName: server.server_name,
+      serverIndex: currentServerIndex,
+      episodeName: episode.name,
+      episodeSlug: episode.slug,
+      episodeIndex: currentEpisodeIndex,
+      quality: movie.quality,
+      language: movie.language,
+    });
+  }, [movie, currentServerIndex, currentEpisodeIndex]);
 
   if (error) {
     return (
@@ -261,6 +317,24 @@ export function MovieDetailPage() {
               </div>
             )}
           </div>
+
+          {resumedFromHistory && currentEpisode && (
+            <div className="mb-3 flex items-center justify-between rounded-lg bg-primary/15 border border-primary/30 px-3.5 py-2 text-xs text-white">
+              <span className="flex items-center gap-2">
+                <History className="size-4 text-primary shrink-0" />
+                <span>
+                  Đang xem tiếp: <strong>{currentEpisode.name.toLowerCase().includes("tập") ? currentEpisode.name : `Tập ${currentEpisode.name}`}</strong> ({currentServer?.server_name}) từ tiến trình đã lưu.
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setResumedFromHistory(false)}
+                className="text-white/60 hover:text-white text-[11px]"
+              >
+                Đóng
+              </button>
+            </div>
+          )}
 
           {/* Player Iframe */}
           {hasEpisodes && currentEpisode?.embed ? (
