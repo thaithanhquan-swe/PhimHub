@@ -102,14 +102,6 @@ a {
     linear-gradient(0deg, #141414 0%, transparent 33%, rgb(9 9 11 / 8%) 100%);
 }
 
-.poster-image {
-  transition: transform 180ms ease-out;
-}
-
-.movie-card:hover .poster-image,
-.movie-card:focus-within .poster-image {
-  transform: scale(1.025);
-}
 
 .card-actions {
   opacity: 0;

@@ -214,7 +214,7 @@ export function SchedulePage() {
             return (
               <div
                 key={movie.slug}
-                className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a] transition-all duration-300 hover:border-white/30 hover:shadow-xl hover:-translate-y-1"
+                className="group relative flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a] transition-colors duration-200 hover:border-white/30"
               >
                 {/* Image Banner */}
                 <div className="relative aspect-video w-full overflow-hidden bg-black">
@@ -222,7 +222,7 @@ export function SchedulePage() {
                     src={getBackdropUrl(movie)}
                     alt={movie.title}
                     loading="lazy"
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="size-full object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
 
@@ -249,7 +249,7 @@ export function SchedulePage() {
                     className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40"
                     aria-label={`Xem phim ${movie.title}`}
                   >
-                    <span className="grid size-11 place-items-center rounded-full bg-primary text-white shadow-lg transition-transform hover:scale-110">
+                    <span className="grid size-11 place-items-center rounded-full bg-primary text-white shadow-lg">
                       <Play className="size-5 fill-current ml-0.5" />
                     </span>
                   </Link>

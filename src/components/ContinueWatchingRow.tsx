@@ -156,7 +156,7 @@ export function ContinueWatchingRow() {
                     src={getBackdropUrl({ backdropUrl: item.backdropUrl, posterUrl: item.posterUrl })}
                     alt={item.title}
                     draggable={false}
-                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none select-none"
+                    className="size-full object-cover pointer-events-none select-none"
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
@@ -177,7 +177,7 @@ export function ContinueWatchingRow() {
                     className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40"
                     aria-label={`Xem tiếp ${item.title}`}
                   >
-                    <span className="grid size-11 place-items-center rounded-full bg-primary text-white shadow-lg transition-transform hover:scale-110">
+                    <span className="grid size-11 place-items-center rounded-full bg-primary text-white shadow-lg">
                       <Play className="size-5 fill-current ml-0.5" />
                     </span>
                   </button>

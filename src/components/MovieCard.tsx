@@ -10,7 +10,7 @@ export function MovieCard({ movie }: { movie: Movie }) {
   const movieId = movie.slug || movie.id;
 
   return (
-    <article className="movie-card group relative aspect-[2/3] overflow-hidden rounded-sm bg-[#222]">
+    <article className="movie-card group relative aspect-[2/3] overflow-hidden rounded-sm bg-[#222] transition-colors duration-200 hover:ring-1 hover:ring-white/30">
       <Link
         to={`/movie/${movieId}`}
         className="absolute inset-0 block outline-none focus-visible:ring-2 focus-visible:ring-white"
@@ -28,7 +28,7 @@ export function MovieCard({ movie }: { movie: Movie }) {
               target.src = movie.backdropUrl;
             }
           }}
-          className="poster-image size-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none select-none"
+          className="size-full object-cover pointer-events-none select-none"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
 
@@ -38,7 +38,7 @@ export function MovieCard({ movie }: { movie: Movie }) {
           </span>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 flex translate-y-2 flex-col gap-1 p-2.5 opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
           <p className="line-clamp-1 text-xs font-bold text-white">{movie.title}</p>
           <p className="text-[10px] text-white/75">
             {movie.year} · {movie.quality || "HD"} {movie.language ? `· ${movie.language}` : ""}
