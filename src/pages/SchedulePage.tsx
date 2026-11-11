@@ -148,14 +148,13 @@ export function SchedulePage() {
               type="button"
               onClick={() => setSelectedDay(day.id)}
               className={cn(
-                "shrink-0 relative flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold transition-all duration-200",
+                "shrink-0 relative flex items-center gap-1.5 sm:gap-2 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 min-h-[42px] text-xs sm:text-sm font-semibold transition-all duration-200 active:scale-95",
                 isSelected
                   ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
                   : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
               )}
             >
-              <span className="sm:hidden">{day.short}</span>
-              <span className="hidden sm:inline">{day.name}</span>
+              <span>{day.name}</span>
               {isToday && (
                 <span className="rounded bg-black/40 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white">
                   Hôm nay
@@ -179,7 +178,7 @@ export function SchedulePage() {
             type="button"
             onClick={() => setSelectedCategory(cat.id)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+              "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 min-h-[36px] text-xs font-semibold transition-all active:scale-95",
               selectedCategory === cat.id
                 ? "bg-white text-black font-bold"
                 : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
@@ -244,10 +243,10 @@ export function SchedulePage() {
                     </span>
                   )}
 
-                  {/* Play on hover */}
+                  {/* Play button */}
                   <Link
                     to={`/movie/${movie.slug}?play=true`}
-                    className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40"
+                    className="absolute inset-0 grid place-items-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-black/30 hover:bg-black/50"
                     aria-label={`Xem phim ${movie.title}`}
                   >
                     <span className="grid size-11 place-items-center rounded-full bg-primary text-white shadow-lg">

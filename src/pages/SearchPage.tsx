@@ -97,11 +97,10 @@ export function SearchPage() {
       <label className="mx-auto mb-6 flex h-12 max-w-2xl items-center gap-3 border-b-2 border-white/60 px-2 focus-within:border-primary">
         <Search className="size-5 shrink-0 text-white/70" />
         <input
-          autoFocus
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder="Tìm theo tên phim, diễn viên, từ khóa..."
-          className="w-full bg-transparent text-lg outline-none placeholder:text-white/45 sm:text-2xl"
+          className="w-full bg-transparent text-base sm:text-2xl outline-none placeholder:text-white/45"
         />
         {input && (
           <button
@@ -110,7 +109,7 @@ export function SearchPage() {
               setInput("");
               setParams({});
             }}
-            className="text-xs text-white/60 hover:text-white"
+            className="text-xs text-white/60 hover:text-white px-2 py-1 min-h-[36px]"
           >
             Xóa
           </button>
@@ -127,7 +126,7 @@ export function SearchPage() {
               type="button"
               onClick={() => handleFilterClick(f.label)}
               className={cn(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                "rounded-full px-3.5 py-1.5 min-h-[36px] text-xs font-semibold transition-all active:scale-95",
                 isSelected
                   ? "bg-primary text-white shadow-md shadow-primary/20"
                   : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",

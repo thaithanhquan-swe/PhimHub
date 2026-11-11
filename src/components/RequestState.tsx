@@ -21,7 +21,7 @@ export function RequestError({
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex items-center gap-2 text-white underline underline-offset-4 hover:text-white/75"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 min-h-[38px] text-xs font-bold text-white shadow-md active:scale-95 transition-all"
         >
           <RefreshCw className="size-3.5" /> Thử lại
         </button>
