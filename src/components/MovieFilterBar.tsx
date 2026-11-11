@@ -1,6 +1,6 @@
-import { Filter, RotateCcw, SlidersHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { RotateCcw, X } from "lucide-react";
 
+import { DropdownFilter } from "@/components/DropdownFilter";
 import { FILTER_OPTIONS, type FilterParams } from "@/services/movieApi";
 
 export function MovieFilterBar({
@@ -14,16 +14,11 @@ export function MovieFilterBar({
   onReset: () => void;
   totalResults?: number;
 }) {
-  const [isOpen, setIsOpen] = useState(true);
-
   const hasActiveFilters =
-    (values.type && values.type !== "all") ||
     (values.genre && values.genre !== "all") ||
     (values.country && values.country !== "all") ||
     (values.year && values.year !== "all");
 
-  const currentTypeLabel =
-    FILTER_OPTIONS.types.find((t) => t.value === (values.type || "all"))?.label || "Định dạng";
   const currentGenreLabel =
     FILTER_OPTIONS.genres.find((g) => g.value === (values.genre || "all"))?.label || "Thể loại";
   const currentCountryLabel =
@@ -32,189 +27,94 @@ export function MovieFilterBar({
     FILTER_OPTIONS.years.find((y) => String(y.value) === String(values.year || "all"))?.label || "Năm";
 
   return (
-    <div className="mb-8 rounded-2xl border border-white/10 bg-[#181818]/90 p-4 sm:p-5 backdrop-blur-md shadow-xl">
-      {/* Header with Title and Toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-lg bg-primary/20 text-primary">
-            <SlidersHorizontal className="size-4" />
-          </span>
-          <div>
-            <h3 className="font-display text-sm sm:text-base font-bold text-white flex items-center gap-2">
-              <span>Bộ Lọc Phim Nâng Cao</span>
-              {hasActiveFilters && (
-                <span className="size-2 rounded-full bg-primary animate-pulse" />
-              )}
-            </h3>
-            {typeof totalResults === "number" && (
-              <p className="text-xs text-white/50">
-                Tìm thấy{" "}
-                <strong className="text-primary font-semibold">
-                  {totalResults.toLocaleString("vi-VN")}
-                </strong>{" "}
-                bộ phim phù hợp
-              </p>
-            )}
-          </div>
-        </div>
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+      {/* Sleek Minimalist Dropdown Filters matching user's screenshot: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+        <DropdownFilter
+          label="Thể loại"
+          value={values.genre || "all"}
+          options={FILTER_OPTIONS.genres}
+          onChange={(val) => onChange({ genre: val, page: 1 })}
+          columns={4}
+        />
 
-        <div className="flex items-center gap-2">
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/15 hover:text-white"
-            >
-              <RotateCcw className="size-3.5" />
-              <span>Đặt lại</span>
-            </button>
-          )}
+        <DropdownFilter
+          label="Quốc gia"
+          value={values.country || "all"}
+          options={FILTER_OPTIONS.countries}
+          onChange={(val) => onChange({ country: val, page: 1 })}
+          columns={3}
+        />
 
-          <button
-            type="button"
-            onClick={() => setIsOpen((prev) => !prev)}
-            className="sm:hidden inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white"
-          >
-            <Filter className="size-3.5" />
-            <span>{isOpen ? "Thu gọn" : "Mở bộ lọc"}</span>
-          </button>
-        </div>
+        <DropdownFilter
+          label="Năm"
+          value={values.year ? String(values.year) : "all"}
+          options={FILTER_OPTIONS.years}
+          onChange={(val) => onChange({ year: val, page: 1 })}
+          columns={3}
+        />
       </div>
 
-      {/* Filter Select Controls */}
-      {isOpen && (
-        <div className="pt-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {/* 1. Định dạng */}
-            <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5">
-                Định dạng
-              </label>
-              <select
-                value={values.type || "all"}
-                onChange={(e) => onChange({ type: e.target.value, page: 1 })}
-                className="w-full rounded-xl border border-white/15 bg-[#222] px-3 py-2 text-xs sm:text-sm font-medium text-white outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+      {/* Right side: Count & Reset */}
+      <div className="flex items-center gap-3 ml-auto">
+        {typeof totalResults === "number" && (
+          <span className="text-xs text-white/50 hidden sm:inline">
+            Tìm thấy <strong className="text-white font-semibold">{totalResults.toLocaleString("vi-VN")}</strong> phim
+          </span>
+        )}
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/15 transition-colors"
+          >
+            <RotateCcw className="size-3" />
+            <span>Đặt lại</span>
+          </button>
+        )}
+      </div>
+
+      {/* Active tags (if any specific filter is selected) */}
+      {hasActiveFilters && (
+        <div className="w-full flex flex-wrap items-center gap-2 pt-2">
+          {values.genre && values.genre !== "all" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-0.5 text-xs text-white">
+              <span>{currentGenreLabel}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ genre: "all", page: 1 })}
+                className="hover:text-primary transition-colors"
               >
-                {FILTER_OPTIONS.types.map((t) => (
-                  <option key={t.value} value={t.value} className="bg-[#1c1c1c] text-white">
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
 
-            {/* 2. Thể loại */}
-            <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5">
-                Thể loại
-              </label>
-              <select
-                value={values.genre || "all"}
-                onChange={(e) => onChange({ genre: e.target.value, page: 1 })}
-                className="w-full rounded-xl border border-white/15 bg-[#222] px-3 py-2 text-xs sm:text-sm font-medium text-white outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+          {values.country && values.country !== "all" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-0.5 text-xs text-white">
+              <span>{currentCountryLabel}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ country: "all", page: 1 })}
+                className="hover:text-primary transition-colors"
               >
-                {FILTER_OPTIONS.genres.map((g) => (
-                  <option key={g.value} value={g.value} className="bg-[#1c1c1c] text-white">
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
 
-            {/* 3. Quốc gia */}
-            <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5">
-                Quốc gia
-              </label>
-              <select
-                value={values.country || "all"}
-                onChange={(e) => onChange({ country: e.target.value, page: 1 })}
-                className="w-full rounded-xl border border-white/15 bg-[#222] px-3 py-2 text-xs sm:text-sm font-medium text-white outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+          {values.year && values.year !== "all" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-0.5 text-xs text-white">
+              <span>Năm: {currentYearLabel}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ year: "all", page: 1 })}
+                className="hover:text-primary transition-colors"
               >
-                {FILTER_OPTIONS.countries.map((c) => (
-                  <option key={c.value} value={c.value} className="bg-[#1c1c1c] text-white">
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* 4. Năm phát hành */}
-            <div>
-              <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5">
-                Năm phát hành
-              </label>
-              <select
-                value={values.year || "all"}
-                onChange={(e) => onChange({ year: e.target.value, page: 1 })}
-                className="w-full rounded-xl border border-white/15 bg-[#222] px-3 py-2 text-xs sm:text-sm font-medium text-white outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
-              >
-                {FILTER_OPTIONS.years.map((y) => (
-                  <option key={y.value} value={y.value} className="bg-[#1c1c1c] text-white">
-                    {y.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Active Filter Tags */}
-          {hasActiveFilters && (
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
-              <span className="text-xs text-white/40 mr-1">Đang chọn:</span>
-
-              {values.type && values.type !== "all" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-1 text-xs font-medium text-white">
-                  <span>{currentTypeLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ type: "all", page: 1 })}
-                    className="hover:text-primary transition-colors"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              )}
-
-              {values.genre && values.genre !== "all" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-1 text-xs font-medium text-white">
-                  <span>{currentGenreLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ genre: "all", page: 1 })}
-                    className="hover:text-primary transition-colors"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              )}
-
-              {values.country && values.country !== "all" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-1 text-xs font-medium text-white">
-                  <span>{currentCountryLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ country: "all", page: 1 })}
-                    className="hover:text-primary transition-colors"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              )}
-
-              {values.year && values.year !== "all" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-2.5 py-1 text-xs font-medium text-white">
-                  <span>Năm: {currentYearLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ year: "all", page: 1 })}
-                    className="hover:text-primary transition-colors"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              )}
-            </div>
+                <X className="size-3" />
+              </button>
+            </span>
           )}
         </div>
       )}
