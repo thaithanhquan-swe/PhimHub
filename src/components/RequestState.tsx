@@ -31,10 +31,5 @@ export function RequestError({
 }
 
 export function DemoNotice() {
-  return (
-    <p className="mx-4 my-3 text-xs text-white/55 sm:mx-[4.5%]">
-      Đang dùng dữ liệu demo. Thêm <code>VITE_TMDB_API_KEY</code> trong file{" "}
-      <code>.env</code> để kết nối TMDB.
-    </p>
-  );
+  return null;
 }
