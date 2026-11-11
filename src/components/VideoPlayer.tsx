@@ -406,13 +406,12 @@ export function VideoPlayer({
     };
   }, [hasNextEpisode, onNextEpisode, onTimeUpdate]);
 
-  // Fullscreen & WebKit (iOS) change listeners
+  // Track browser fullscreen without switching to iOS's native video controls.
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFs = Boolean(
         document.fullscreenElement ||
-        (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
-        (videoRef.current as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+        (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
       );
       setIsFullscreen(isFs);
     };
@@ -420,22 +419,9 @@ export function VideoPlayer({
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
 
-    const video = videoRef.current;
-    const handleWebkitBegin = () => setIsFullscreen(true);
-    const handleWebkitEnd = () => setIsFullscreen(false);
-
-    if (video) {
-      video.addEventListener("webkitbeginfullscreen", handleWebkitBegin);
-      video.addEventListener("webkitendfullscreen", handleWebkitEnd);
-    }
-
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
-      if (video) {
-        video.removeEventListener("webkitbeginfullscreen", handleWebkitBegin);
-        video.removeEventListener("webkitendfullscreen", handleWebkitEnd);
-      }
     };
   }, []);
 
@@ -595,42 +581,39 @@ export function VideoPlayer({
 
   function toggleFullscreen() {
     const container = containerRef.current;
-    const video = videoRef.current;
     if (!container) return;
 
     const isCurrentlyFullscreen = Boolean(
       document.fullscreenElement ||
       (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
-      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+      isManualFullscreen
     );
 
     if (!isCurrentlyFullscreen) {
       if (container.requestFullscreen) {
         container
           .requestFullscreen()
-          .then(() => {
+          .then(async () => {
             if (screen.orientation && "lock" in screen.orientation) {
-              (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
-                .lock("landscape")
-                .catch(() => {});
+              try {
+                await (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
+                  .lock("landscape");
+              } catch {
+                // Fullscreen still works when orientation locking is unavailable.
+              }
             }
           })
-          .catch(() => {
-            if (video && "webkitEnterFullscreen" in video) {
-              (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-            }
-          });
-      } else if (video && "webkitEnterFullscreen" in video) {
-        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+          .catch(() => setIsManualFullscreen(true));
+      } else {
+        setIsManualFullscreen(true);
       }
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
       } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
         (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      } else if (video && "webkitExitFullscreen" in video) {
-        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
       }
+      setIsManualFullscreen(false);
       if (screen.orientation && "unlock" in screen.orientation) {
         screen.orientation.unlock();
       }
@@ -649,11 +632,9 @@ export function VideoPlayer({
         })
       | undefined;
 
-    const video = videoRef.current;
     const isCurrentlyFullscreen = Boolean(
       document.fullscreenElement ||
-      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
-      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
     );
 
     if (isCurrentlyFullscreen || isManualFullscreen) {
@@ -662,15 +643,8 @@ export function VideoPlayer({
         document.exitFullscreen().catch(() => {});
       } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
         (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      } else if (video && "webkitExitFullscreen" in video) {
-        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
       }
       orientation?.unlock?.();
-      return;
-    }
-
-    if (video && "webkitEnterFullscreen" in video) {
-      (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
       return;
     }
 
@@ -1194,10 +1168,12 @@ export function VideoPlayer({
               type="button"
               onClick={toggleFullscreen}
               className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all"
-              title="Toàn màn hình (F)"
-              aria-label="Toàn màn hình"
+              title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình (F)" : "Toàn màn hình (F)"}
+              aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
             >
-              {isFullscreen ? <Minimize className="size-4 sm:size-5" /> : <Maximize className="size-4 sm:size-5" />}
+              {isFullscreen || isManualFullscreen
+                ? <Minimize className="size-4 sm:size-5" />
+                : <Maximize className="size-4 sm:size-5" />}
             </button>
           </div>
         </div>
