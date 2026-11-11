@@ -38,12 +38,16 @@ export function HomePage() {
     return sections || [];
   }, [savedMovies, savedOnly, sections]);
 
-  const heroMovie = sections?.[0]?.movies?.[0] ?? null;
+  // Featured movies for the Hero carousel (top 6 movies from the primary section)
+  const featuredMovies = useMemo(() => {
+    if (!sections || sections.length === 0) return [];
+    return sections[0]?.movies?.slice(0, 6) || [];
+  }, [sections]);
 
   if (!sections && !error && !savedOnly) return <LoadingSkeleton />;
   if (error) {
     return (
-      <div className="pt-20">
+      <div className="pt-24">
         <RequestError message={error} onRetry={() => setAttempt((value) => value + 1)} />
       </div>
     );
@@ -51,15 +55,15 @@ export function HomePage() {
 
   return (
     <main className="pb-16">
-      {!savedOnly && heroMovie && (
+      {!savedOnly && featuredMovies.length > 0 && (
         <Hero
-          movie={heroMovie}
-          onPlay={() => navigate(`/movie/${heroMovie.slug || heroMovie.id}?play=true`)}
+          movies={featuredMovies}
+          onPlay={(movie) => navigate(`/movie/${movie.slug || movie.id}?play=true`)}
         />
       )}
 
       {savedOnly && (
-        <div className="px-4 pt-24 sm:px-[4.5%]">
+        <div className="px-4 pt-28 sm:px-[4.5%]">
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Danh sách phim đã lưu</h1>
           {savedMovies.length === 0 && (
             <p className="mt-4 text-sm text-white/60">
@@ -69,7 +73,7 @@ export function HomePage() {
         </div>
       )}
 
-      <div className={savedOnly ? "mt-6" : "relative z-10 -mt-10 sm:-mt-12"}>
+      <div className={savedOnly ? "mt-6" : "relative z-10 -mt-8 sm:-mt-12"}>
         {visibleSections.map((section) => (
           <MovieRow
             key={section.title}
