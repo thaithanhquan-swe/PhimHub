@@ -28,15 +28,19 @@ export function DropdownFilter({
 
   // Close when clicking outside
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     }
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside, { passive: true });
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, [isOpen]);
 
   const selectedOption = options.find((o) => o.value === value);
@@ -64,40 +68,62 @@ export function DropdownFilter({
       </button>
 
       {isOpen && (
-        <div
-          className={cn(
-            "absolute top-full mt-2 z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-w-[calc(100vw-1.5rem)] max-h-[65vh] overflow-y-auto",
-            align === "right" ? "right-0" : "left-0",
-            columns === 4
-              ? "w-[320px] sm:w-[480px] md:w-[560px] grid grid-cols-2 sm:grid-cols-4 gap-1.5"
-              : columns === 3
-                ? "w-[280px] sm:w-[390px] grid grid-cols-2 sm:grid-cols-3 gap-1.5"
-                : "w-[230px] grid grid-cols-2 gap-1.5",
-          )}
-        >
-          {options.map((opt) => {
-            const isSelected = (value || "all") === opt.value;
-            return (
+        <>
+          {/* Mobile backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs sm:hidden animate-in fade-in duration-150"
+            onClick={() => setIsOpen(false)}
+          />
+
+          <div
+            className={cn(
+              "z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[65vh] overflow-y-auto",
+              "max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:w-auto max-sm:top-28 sm:absolute sm:top-full sm:mt-2",
+              align === "right" ? "sm:right-0" : "sm:left-0",
+              columns === 4
+                ? "sm:w-[480px] md:w-[560px] grid grid-cols-2 sm:grid-cols-4 gap-1.5"
+                : columns === 3
+                  ? "sm:w-[390px] grid grid-cols-2 sm:grid-cols-3 gap-1.5"
+                  : "grid grid-cols-2 gap-1.5",
+            )}
+          >
+            {/* Mobile Header */}
+            <div className="col-span-2 sm:hidden flex items-center justify-between pb-2 mb-1 border-b border-white/10 text-xs font-bold text-white/70">
+              <span>Chọn {label}</span>
               <button
-                key={opt.value}
                 type="button"
-                onClick={() => {
-                  onChange(opt.value);
-                  setIsOpen(false);
-                }}
-                className={cn(
-                  "flex items-center justify-between rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-all text-left",
-                  isSelected
-                    ? "bg-primary text-white font-bold shadow-md shadow-primary/30"
-                    : "text-white/75 hover:bg-white/15 hover:text-white",
-                )}
+                onClick={() => setIsOpen(false)}
+                className="text-white/50 hover:text-white px-2 py-0.5 rounded"
+                aria-label="Đóng"
               >
-                <span className="line-clamp-1">{opt.label}</span>
-                {isSelected && <Check className="size-3.5 shrink-0 ml-1.5" />}
+                ✕
               </button>
-            );
-          })}
-        </div>
+            </div>
+
+            {options.map((opt) => {
+              const isSelected = (value || "all") === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.value);
+                    setIsOpen(false);
+                  }}
+                  className={cn(
+                    "flex items-center justify-between rounded-lg px-3 py-2 min-h-[38px] text-xs sm:text-sm font-medium transition-all text-left active:scale-95",
+                    isSelected
+                      ? "bg-primary text-white font-bold shadow-md shadow-primary/30"
+                      : "text-white/75 hover:bg-white/15 hover:text-white",
+                  )}
+                >
+                  <span className="line-clamp-1">{opt.label}</span>
+                  {isSelected && <Check className="size-3.5 shrink-0 ml-1.5" />}
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
