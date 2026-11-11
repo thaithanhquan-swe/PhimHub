@@ -411,3 +411,123 @@ export async function getHomeSections(
     )
     .map((res) => res.value);
 }
+
+export type FilterParams = {
+  type?: string; // "tv" | "movie" | "hoat-hinh" | "tv-shows" | "all"
+  genre?: string;
+  country?: string;
+  year?: string | number;
+  page?: number;
+};
+
+export type FilterResult = {
+  movies: Movie[];
+  currentPage: number;
+  totalPage: number;
+  totalItems: number;
+};
+
+export const FILTER_OPTIONS = {
+  types: [
+    { label: "Tất cả định dạng", value: "all" },
+    { label: "Phim bộ", value: "tv" },
+    { label: "Phim lẻ", value: "movie" },
+    { label: "Hoạt hình", value: "hoat-hinh" },
+    { label: "TV Shows", value: "tv-shows" },
+  ],
+  genres: [
+    { label: "Tất cả thể loại", value: "all" },
+    { label: "Hành động", value: "hanh-dong" },
+    { label: "Tình cảm", value: "tinh-cam" },
+    { label: "Hài hước", value: "hai" },
+    { label: "Cổ trang", value: "co-trang" },
+    { label: "Tâm lý", value: "tam-ly" },
+    { label: "Kinh dị", value: "kinh-di" },
+    { label: "Khoa học viễn tưởng", value: "khoa-hoc-vien-tuong" },
+    { label: "Phiêu lưu", value: "phieu-luu" },
+    { label: "Hình sự", value: "hinh-su" },
+    { label: "Gây cấn", value: "gay-can" },
+    { label: "Chiến tranh", value: "chien-tranh" },
+    { label: "Gia đình", value: "gia-dinh" },
+    { label: "Hoạt hình", value: "hoat-hinh" },
+    { label: "Tài liệu", value: "tai-lieu" },
+    { label: "Bí ẩn", value: "bi-an" },
+  ],
+  countries: [
+    { label: "Tất cả quốc gia", value: "all" },
+    { label: "Trung Quốc", value: "trung-quoc" },
+    { label: "Hàn Quốc", value: "han-quoc" },
+    { label: "Âu Mỹ", value: "my" },
+    { label: "Nhật Bản", value: "nhat-ban" },
+    { label: "Thái Lan", value: "thai-lan" },
+    { label: "Việt Nam", value: "viet-nam" },
+    { label: "Hồng Kông", value: "hong-kong" },
+    { label: "Đài Loan", value: "dai-loan" },
+    { label: "Anh", value: "anh" },
+    { label: "Pháp", value: "phap" },
+    { label: "Ấn Độ", value: "an-do" },
+  ],
+  years: [
+    { label: "Tất cả năm", value: "all" },
+    { label: "2026", value: "2026" },
+    { label: "2025", value: "2025" },
+    { label: "2024", value: "2024" },
+    { label: "2023", value: "2023" },
+    { label: "2022", value: "2022" },
+    { label: "2021", value: "2021" },
+    { label: "2020", value: "2020" },
+    { label: "2019", value: "2019" },
+    { label: "2018", value: "2018" },
+  ],
+};
+
+export async function getFilteredCatalog(
+  params: FilterParams,
+  signal?: AbortSignal,
+): Promise<FilterResult> {
+  const page = params.page || 1;
+  let endpoint = `/films/phim-moi-cap-nhat?page=${page}`;
+
+  // Priority mapping based on specific filters
+  if (params.genre && params.genre !== "all") {
+    endpoint = `/films/the-loai/${params.genre}?page=${page}`;
+  } else if (params.country && params.country !== "all") {
+    endpoint = `/films/quoc-gia/${params.country}?page=${page}`;
+  } else if (params.year && params.year !== "all") {
+    endpoint = `/films/nam-phat-hanh/${params.year}?page=${page}`;
+  } else if (params.type && params.type !== "all") {
+    const typeSlug =
+      params.type === "tv"
+        ? "phim-bo"
+        : params.type === "movie"
+          ? "phim-le"
+          : params.type;
+    endpoint = `/films/danh-sach/${typeSlug}?page=${page}`;
+  }
+
+  const data = await request<NguonCListResponse>(endpoint, signal);
+  let movies = (data.items || []).map(mapNguonCMovie);
+
+  // Client-side refinements
+  if (params.type && params.type !== "all") {
+    if (params.type === "tv") {
+      movies = movies.filter((m) => m.kind === "Series");
+    } else if (params.type === "movie") {
+      movies = movies.filter((m) => m.kind === "Phim lẻ");
+    }
+  }
+
+  if (params.year && params.year !== "all") {
+    const yNum = Number(params.year);
+    if (!isNaN(yNum)) {
+      movies = movies.filter((m) => m.year === yNum);
+    }
+  }
+
+  return {
+    movies,
+    currentPage: data.paginate?.current_page || page,
+    totalPage: data.paginate?.total_page || 1,
+    totalItems: data.paginate?.total_items || movies.length,
+  };
+}
