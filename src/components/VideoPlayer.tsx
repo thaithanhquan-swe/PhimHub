@@ -603,12 +603,12 @@ export function VideoPlayer({
               <RotateCw className="size-4" />
             </button>
 
-            {/* Volume Control with hover slider */}
-            <div className="group/vol flex items-center gap-1.5 ml-1">
+            {/* Volume Control with smooth custom slide-out track */}
+            <div className="group/vol flex items-center">
               <button
                 type="button"
                 onClick={toggleMute}
-                className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
+                className="grid size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
                 title="Bật/Tắt âm thanh (M)"
               >
                 {isMuted || volume === 0 ? (
@@ -619,23 +619,37 @@ export function VideoPlayer({
                   <Volume2 className="size-5" />
                 )}
               </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => changeVolume(parseFloat(e.target.value))}
-                className="h-1 w-0 group-hover/vol:w-16 sm:group-hover/vol:w-20 transition-all duration-200 accent-primary cursor-pointer"
-                title="Âm lượng"
-              />
+
+              {/* Slider with overflow-hidden so thumb never leaks onto speaker icon */}
+              <div className="flex h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/vol:w-20 group-hover/vol:px-1.5">
+                <div
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    changeVolume(pos);
+                  }}
+                  className="group/track relative flex h-4 w-full cursor-pointer items-center"
+                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                >
+                  <div className="relative h-1 w-full rounded-full bg-white/25 transition-all group-hover/track:h-1.5">
+                    <div
+                      style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
+                      className="absolute inset-y-0 left-0 rounded-full bg-white"
+                    />
+                    <div
+                      style={{ left: `${(isMuted ? 0 : volume) * 100}%` }}
+                      className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md opacity-0 transition-opacity group-hover/vol:opacity-100"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Time Indicator */}
-            <div className="ml-2 text-xs text-white/80 font-medium">
-              <span>{formatTime(currentTime)}</span>
-              <span className="mx-1 text-white/40">/</span>
-              <span>{formatTime(duration)}</span>
+            {/* Time Indicator (Netflix-style tabular mono font) */}
+            <div className="ml-2 flex items-center font-mono text-xs tabular-nums select-none tracking-tight">
+              <span className="font-semibold text-white/95">{formatTime(currentTime)}</span>
+              <span className="mx-1 text-white/35">/</span>
+              <span className="text-white/55">{formatTime(duration)}</span>
             </div>
           </div>
 
