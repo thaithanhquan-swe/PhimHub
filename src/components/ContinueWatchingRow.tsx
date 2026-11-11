@@ -48,6 +48,7 @@ export function ContinueWatchingRow() {
 
   function handleMouseDown(e: React.MouseEvent) {
     if (e.button !== 0 || !rowRef.current) return;
+    if ((e.target as HTMLElement).closest("button")) return;
     isDownRef.current = true;
     hasDraggedRef.current = false;
     startXRef.current = e.pageX - rowRef.current.offsetLeft;
@@ -57,15 +58,15 @@ export function ContinueWatchingRow() {
 
   function handleMouseMove(e: React.MouseEvent) {
     if (!isDownRef.current || !rowRef.current) return;
-    e.preventDefault();
     const x = e.pageX - rowRef.current.offsetLeft;
     const walk = x - startXRef.current;
-    if (Math.abs(walk) > 6) {
+    if (Math.abs(walk) > 12) {
       hasDraggedRef.current = true;
       if (!isDragging) setIsDragging(true);
+      e.preventDefault();
+      rowRef.current.scrollLeft = scrollLeftRef.current - walk;
+      updateScrollButtons();
     }
-    rowRef.current.scrollLeft = scrollLeftRef.current - walk;
-    updateScrollButtons();
   }
 
   function handleMouseUpOrLeave() {

@@ -61,11 +61,15 @@ export function MovieCard({ movie }: { movie: Movie }) {
         {/* Bookmark Button */}
         <button
           type="button"
-          onClick={() => toggle(movie)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggle(movie);
+          }}
           aria-label={`${saved ? "Xóa khỏi" : "Thêm vào"} danh sách của tôi: ${movie.title}`}
-          className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/60 text-white opacity-80 transition-all hover:bg-white hover:text-black hover:opacity-100"
+          className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-black/70 text-white opacity-85 transition-all hover:bg-white hover:text-black hover:opacity-100 active:scale-90 shadow-md backdrop-blur-xs select-none"
         >
-          {saved ? <BookmarkCheck className="size-3.5 text-primary" /> : <Bookmark className="size-3.5" />}
+          {saved ? <BookmarkCheck className="size-4 text-primary" /> : <Bookmark className="size-4" />}
         </button>
       </div>
 
