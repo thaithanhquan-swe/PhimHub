@@ -1,4 +1,4 @@
-import { Bookmark, Calendar, Compass, Home, Search } from "lucide-react";
+import { Bookmark, Calendar, Compass, Home, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -113,23 +113,33 @@ export function Navbar() {
         })}
       </nav>
 
-      {/* Search Input without Auth */}
-      <form onSubmit={submitSearch} className="ml-auto flex items-center gap-3">
-        <div className="flex h-10 items-center gap-2.5 rounded-full border border-white/20 bg-black/40 px-3.5 backdrop-blur-md transition-all focus-within:border-white focus-within:bg-black/60 sm:w-[220px]">
+      {/* Elongated Search Bar */}
+      <form onSubmit={submitSearch} className="ml-auto flex items-center">
+        <div className="relative flex h-10 w-[170px] sm:w-[260px] md:w-[320px] lg:w-[400px] xl:w-[480px] items-center gap-2.5 rounded-full border border-white/20 bg-black/45 px-3.5 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/75">
           <Search className="size-4 shrink-0 text-white/70" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Tìm phim, diễn viên..."
+            placeholder="Tìm tên phim, diễn viên, đạo diễn..."
             aria-label="Tìm phim"
-            className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45"
+            className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45 text-white pr-2"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="grid size-5 place-items-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Xóa từ khóa"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       </form>
 
       {/* Mobile Bottom Navigation */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-[#121212]/95 backdrop-blur-lg py-2 lg:hidden shadow-2xl"
+        className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#121212]/95 backdrop-blur-lg py-2 lg:hidden shadow-2xl"
         aria-label="Điều hướng di động"
       >
         {[
