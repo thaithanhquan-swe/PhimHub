@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 
 import { DropdownFilter } from "@/components/DropdownFilter";
 import { Logo } from "@/components/Logo";
+import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { cn } from "@/lib/utils";
 import { FILTER_OPTIONS } from "@/services/movieApi";
 
@@ -159,29 +160,33 @@ export function Navbar() {
         </div>
       </nav>
 
-      {/* Elongated Search Bar (matching user's screenshot, extra wide) */}
-      <form onSubmit={submitSearch} className="ml-auto flex items-center justify-end flex-1 max-w-[240px] sm:max-w-[340px] md:max-w-[450px] lg:max-w-[550px] xl:max-w-[620px]">
-        <div className="relative flex h-10 w-full items-center gap-2.5 rounded-full border border-white/20 bg-black/50 px-3.5 sm:px-4 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/80">
-          <Search className="size-4 shrink-0 text-white/70" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Tìm phim, diễn viên..."
-            aria-label="Tìm phim"
-            className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45 text-white pr-2"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              className="grid size-5 place-items-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label="Xóa từ khóa"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-      </form>
+      {/* Elongated Search Bar + Real-time Provider Status Badge */}
+      <div className="ml-auto flex items-center gap-2 sm:gap-3 flex-1 max-w-[280px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
+        <ProviderStatusBadge className="shrink-0" />
+
+        <form onSubmit={submitSearch} className="flex-1 min-w-[130px]">
+          <div className="relative flex h-10 w-full items-center gap-2.5 rounded-full border border-white/20 bg-black/50 px-3.5 sm:px-4 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/80">
+            <Search className="size-4 shrink-0 text-white/70" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Tìm phim, diễn viên..."
+              aria-label="Tìm phim"
+              className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45 text-white pr-2"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="grid size-5 place-items-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Xóa từ khóa"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
 
       {/* Mobile Bottom Navigation */}
       <nav
