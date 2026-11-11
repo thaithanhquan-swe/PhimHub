@@ -103,22 +103,21 @@ a {
     linear-gradient(0deg, #141414 0%, transparent 33%, rgb(9 9 11 / 8%) 100%);
 }
 
-.player-landscape-fallback {
+.player-landscape-mode {
   position: fixed !important;
-  top: 50% !important;
-  left: 50% !important;
+  inset: 0 !important;
   z-index: 9999 !important;
-  width: 100vh !important;
-  height: 100vw !important;
+  width: 100vw !important;
+  height: 100vh !important;
   max-width: none !important;
   aspect-ratio: auto !important;
-  transform: translate(-50%, -50%) rotate(90deg) !important;
+  transform: none !important;
   border-radius: 0 !important;
 }
 
 @supports (height: 100dvh) {
-  .player-landscape-fallback {
-    width: 100dvh !important;
+  .player-landscape-mode {
+    height: 100dvh !important;
   }
 }
 
