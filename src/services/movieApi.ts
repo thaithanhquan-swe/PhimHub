@@ -964,3 +964,129 @@ export async function getFilteredCatalog(
 
   return result.data;
 }
+
+// -------------------------------------------------------------
+// Related Franchise & Seasons Discovery
+// -------------------------------------------------------------
+export type FranchisePart = {
+  id: string;
+  slug: string;
+  title: string;
+  partLabel: string;
+  year?: number;
+  quality?: string;
+  posterUrl?: string;
+  isCurrent: boolean;
+};
+
+export async function getFranchiseParts(
+  movie: { title: string; slug: string; kind?: string },
+  signal?: AbortSignal,
+): Promise<FranchisePart[]> {
+  try {
+    // 1. Extract clean base/franchise title (strip season numbers, part tags)
+    let clean = movie.title
+      .replace(/[\(\[\{]?(?:phần|season|mùa|part)\s*\d+[\)\]\}]?/gi, "")
+      .replace(/\s*:\s*(?:phần|season|mùa|part)\s*\d+/gi, "");
+
+    if (clean.includes(":")) {
+      const parts = clean.split(":");
+      if (parts[0].trim().length >= 4) {
+        clean = parts[0];
+      }
+    }
+    clean = clean.trim().replace(/^[-–:\s]+|[-–:\s]+$/g, "");
+
+    if (clean.length < 3) return [];
+
+    // 2. Search for candidate titles in this franchise
+    const results = await searchMovies(clean, 1, signal);
+    if (!results || results.length < 2) return [];
+
+    const rootKw = clean.toLowerCase();
+    const rootSlugPrefix = movie.slug.replace(/-(?:phan|season|part|ss)-\d+.*$/, "");
+
+    // 3. Filter candidates belonging to the same franchise
+    const franchiseItems = results.filter((item) => {
+      const t = item.title.toLowerCase();
+      const s = item.slug.toLowerCase();
+      return (
+        t.includes(rootKw) ||
+        s.startsWith(rootSlugPrefix) ||
+        (item.originalTitle && movie.title.toLowerCase().includes(item.originalTitle.toLowerCase()))
+      );
+    });
+
+    if (franchiseItems.length < 2) return [];
+
+    // Helper to determine part label matching user's reference:
+    // "Phần Special", "Phần TV Series", "Phần Movie", "Phần 1", "Phần 2", etc.
+    function determinePartLabel(item: Movie): { label: string; priority: number } {
+      const t = item.title.toLowerCase();
+      const s = item.slug.toLowerCase();
+
+      // Special / OVA
+      if (t.includes("special") || s.includes("special") || t.includes("đặc biệt") || t.includes("ova")) {
+        return { label: "Phần Special", priority: 80 };
+      }
+
+      // TV Series
+      if (t.includes("tv series") || s.includes("tv-series") || (t.includes("series") && !t.includes("movie"))) {
+        return { label: "Phần TV Series", priority: 70 };
+      }
+
+      // Numbered Seasons: Phần 1, Phần 2, Phần 3...
+      const mTitle = t.match(/(?:phần|season|mùa|part)\s*(\d+)/i);
+      if (mTitle) {
+        const num = parseInt(mTitle[1], 10);
+        return { label: `Phần ${num}`, priority: num };
+      }
+
+      const mSlug = s.match(/(?:phan|season|part|ss)-?(\d+)/i);
+      if (mSlug) {
+        const num = parseInt(mSlug[1], 10);
+        return { label: `Phần ${num}`, priority: num };
+      }
+
+      // Movie / Chiếu rạp
+      if (t.includes("movie") || s.includes("movie") || t.includes("chiếu rạp") || item.kind === "Phim lẻ") {
+        return { label: "Phần Movie", priority: 90 };
+      }
+
+      return { label: "Phần 1", priority: 1 };
+    }
+
+    // Map and avoid duplicate labels
+    const labelCounts = new Map<string, number>();
+    const mapped: (FranchisePart & { priority: number })[] = franchiseItems.map((item) => {
+      const { label, priority } = determinePartLabel(item);
+      const count = (labelCounts.get(label) || 0) + 1;
+      labelCounts.set(label, count);
+
+      let finalLabel = label;
+      if (count > 1) {
+        finalLabel = `${label} (${item.year || count})`;
+      }
+
+      return {
+        id: item.id || item.slug,
+        slug: item.slug,
+        title: item.title,
+        partLabel: finalLabel,
+        year: item.year,
+        quality: item.quality,
+        posterUrl: item.posterUrl,
+        isCurrent: item.slug === movie.slug,
+        priority,
+      };
+    });
+
+    // Sort by priority (Phần 1, Phần 2, Phần 3... then TV Series, then Movie, then Special)
+    mapped.sort((a, b) => a.priority - b.priority);
+
+    return mapped.map(({ priority, ...rest }) => rest);
+  } catch {
+    return [];
+  }
+}
+

@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { FranchiseSeasonsBar } from "@/components/FranchiseSeasonsBar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
@@ -21,9 +22,11 @@ import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
 import { cn } from "@/lib/utils";
 import {
+  getFranchiseParts,
   getMovieDetails,
   type EpisodeItem,
   type EpisodeServer,
+  type FranchisePart,
   type MovieDetails,
 } from "@/services/movieApi";
 
@@ -33,6 +36,7 @@ export function MovieDetailPage() {
   const autoPlay = searchParams.get("play") === "true";
 
   const [movie, setMovie] = useState<MovieDetails | null>(null);
+  const [franchiseParts, setFranchiseParts] = useState<FranchisePart[]>([]);
   const [error, setError] = useState("");
   const [currentServerIndex, setCurrentServerIndex] = useState(0);
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
@@ -46,6 +50,7 @@ export function MovieDetailPage() {
   useEffect(() => {
     const controller = new AbortController();
     setMovie(null);
+    setFranchiseParts([]);
     setError("");
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
@@ -54,6 +59,11 @@ export function MovieDetailPage() {
     getMovieDetails(id, controller.signal)
       .then((data) => {
         setMovie(data);
+
+        // Fetch related franchise & season parts in background
+        getFranchiseParts(data, controller.signal)
+          .then(setFranchiseParts)
+          .catch(() => setFranchiseParts([]));
 
         // Resume from query param or previous watch history
         const paramServer = searchParams.get("server");
@@ -243,6 +253,27 @@ export function MovieDetailPage() {
               {movie.overview}
             </p>
 
+            {/* Franchise / Season Switcher (Hero area) */}
+            {franchiseParts.length > 1 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-white/60 mr-1">Các phần:</span>
+                {franchiseParts.map((p) => (
+                  <Link
+                    key={p.slug}
+                    to={`/movie/${p.slug}?play=true`}
+                    className={cn(
+                      "px-3 py-1 rounded text-xs font-semibold border transition-all",
+                      p.isCurrent
+                        ? "bg-[#c4ea3b] text-black border-[#c4ea3b] font-bold shadow-md shadow-[#c4ea3b]/25"
+                        : "bg-[#1f1f23]/90 text-white/90 border-white/20 hover:border-white/60 hover:bg-white/10",
+                    )}
+                  >
+                    {p.partLabel}
+                  </Link>
+                ))}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
               {hasEpisodes ? (
@@ -388,6 +419,9 @@ export function MovieDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Franchise / Seasons Switcher Bar */}
+          <FranchiseSeasonsBar parts={franchiseParts} className="mt-6" />
 
           {/* Episode Selector */}
           {currentServer && currentServer.items && currentServer.items.length > 0 && (
