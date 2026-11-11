@@ -46,6 +46,7 @@ export function MovieDetailPage() {
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
   const [resumedFromHistory, setResumedFromHistory] = useState(false);
+  const [preferEmbed, setPreferEmbed] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,6 +56,7 @@ export function MovieDetailPage() {
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
     setResumedFromHistory(false);
+    setPreferEmbed(false);
 
     getMovieDetails(id, controller.signal)
       .then((data) => {
@@ -384,7 +386,7 @@ export function MovieDetailPage() {
           {hasEpisodes && currentEpisode ? (
             <div>
               <VideoPlayer
-                key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}`}
+                key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}`}
                 m3u8Url={currentEpisode.m3u8}
                 embedUrl={currentEpisode.embed}
                 title={movie.title}
@@ -393,20 +395,32 @@ export function MovieDetailPage() {
                 autoPlay={true}
                 hasNextEpisode={hasNextEpisode}
                 onNextEpisode={handleNextEpisode}
+                preferEmbed={preferEmbed}
               />
 
-              {/* Real-time streaming source info (Read-only status) */}
+              {/* Real-time streaming source info with source switcher */}
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">
                 <div className="flex items-center gap-2">
                   <span>Máy chủ nguồn:</span>
                   <ProviderStatusBadge />
                 </div>
-                {currentEpisode?.m3u8 && (
-                  <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
-                    <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Phát trực tiếp HLS (M3U8) tốc độ cao</span>
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {currentEpisode?.embed && (
+                    <button
+                      type="button"
+                      onClick={() => setPreferEmbed((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/90 hover:text-white hover:bg-white/20 active:scale-95 transition-all"
+                    >
+                      <span>{preferEmbed ? "▶ Đổi sang: Trực tiếp (HLS)" : "⚡ Đổi sang: Player dự phòng (Embed)"}</span>
+                    </button>
+                  )}
+                  {currentEpisode?.m3u8 && !preferEmbed && (
+                    <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="hidden sm:inline">Phát trực tiếp HLS</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ) : (

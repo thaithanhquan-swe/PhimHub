@@ -53,6 +53,7 @@ export function VideoPlayer({
   hasNextEpisode = false,
   onNextEpisode,
   onTimeUpdate,
+  preferEmbed = false,
 }: {
   m3u8Url?: string;
   embedUrl?: string;
@@ -63,6 +64,7 @@ export function VideoPlayer({
   hasNextEpisode?: boolean;
   onNextEpisode?: () => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  preferEmbed?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -85,13 +87,19 @@ export function VideoPlayer({
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [useEmbedFallback, setUseEmbedFallback] = useState(false);
+  const [useEmbedFallback, setUseEmbedFallback] = useState(preferEmbed);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isRotationFallback, setIsRotationFallback] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio">("main");
   const [seekFeedback, setSeekFeedback] = useState<string | null>(null);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+
+  useEffect(() => {
+    setUseEmbedFallback(preferEmbed);
+  }, [preferEmbed]);
 
   // Timeline hover state
   const [hoverTime, setHoverTime] = useState<number | null>(null);
@@ -127,6 +135,7 @@ export function VideoPlayer({
   useEffect(() => {
     setError(null);
     setIsLoading(true);
+    setMutedAutoplayNotice(false);
 
     if (!preferM3U8 || !m3u8Url) {
       setIsLoading(false);
@@ -141,27 +150,34 @@ export function VideoPlayer({
       hlsRef.current = null;
     }
 
-    // Native Safari / iOS HLS
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = m3u8Url;
-      video.addEventListener("loadedmetadata", () => {
-        setIsLoading(false);
-        setDuration(video.duration || 0);
-        if (autoPlay) {
-          video.play().catch(() => setIsPlaying(false));
+    // Safety timeout: If stream metadata doesn't load within 8.5s, fall back to embed player
+    const timeoutTimer = window.setTimeout(() => {
+      const v = videoRef.current;
+      if (v && v.readyState === 0 && !isPlaying) {
+        console.warn("HLS load timed out after 8.5s, falling back to embed player");
+        if (embedUrl) {
+          setUseEmbedFallback(true);
+        } else {
+          setIsLoading(false);
         }
-      });
-      return;
-    }
+      }
+    }, 8500);
 
-    // HLS.js for Chrome, Firefox, Edge, Android
+    // Prefer Hls.js on all browsers supporting MediaSource Extensions (Chrome, Edge, Firefox, Mac Safari)
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
+        lowLatencyMode: false, // Critical: lowLatencyMode is for live streams, disable for VOD to prevent stalling
+        backBufferLength: 60,
         maxBufferLength: 30,
-        maxMaxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        maxBufferSize: 60 * 1000 * 1000,
+        manifestLoadingTimeOut: 8000,
+        manifestLoadingMaxRetry: 3,
+        levelLoadingTimeOut: 8000,
+        levelLoadingMaxRetry: 3,
+        fragLoadingTimeOut: 12000,
+        fragLoadingMaxRetry: 3,
       });
 
       hlsRef.current = hls;
@@ -186,18 +202,66 @@ export function VideoPlayer({
         }
 
         if (autoPlay) {
-          video.play().catch(() => setIsPlaying(false));
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoading(false);
+              })
+              .catch(() => {
+                // Autoplay blocked by browser policy: attempt muted autoplay
+                video.muted = true;
+                setIsMuted(true);
+                video
+                  .play()
+                  .then(() => {
+                    setIsPlaying(true);
+                    setIsLoading(false);
+                    setMutedAutoplayNotice(true);
+                  })
+                  .catch(() => {
+                    // Completely blocked: stay paused and ready for user click
+                    video.muted = false;
+                    setIsMuted(false);
+                    setIsPlaying(false);
+                    setIsLoading(false);
+                  });
+              });
+          }
         }
       });
 
+      let fatalErrorCount = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
+          fatalErrorCount++;
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
+              if (fatalErrorCount <= 2) {
+                hls.startLoad();
+              } else {
+                hls.destroy();
+                if (embedUrl) {
+                  setUseEmbedFallback(true);
+                } else {
+                  setError("Không thể kết nối máy chủ phát video. Vui lòng thử lại.");
+                  setIsLoading(false);
+                }
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
+              if (fatalErrorCount <= 2) {
+                hls.recoverMediaError();
+              } else {
+                hls.destroy();
+                if (embedUrl) {
+                  setUseEmbedFallback(true);
+                } else {
+                  setError("Định dạng video không tương thích.");
+                  setIsLoading(false);
+                }
+              }
               break;
             default:
               hls.destroy();
@@ -205,6 +269,7 @@ export function VideoPlayer({
                 setUseEmbedFallback(true);
               } else {
                 setError("Luồng video gặp sự cố. Vui lòng thử lại.");
+                setIsLoading(false);
               }
               break;
           }
@@ -212,13 +277,55 @@ export function VideoPlayer({
       });
 
       return () => {
+        window.clearTimeout(timeoutTimer);
         hls.destroy();
         hlsRef.current = null;
+      };
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Native iOS Safari path
+      video.src = m3u8Url;
+      const handleLoadedMeta = () => {
+        setIsLoading(false);
+        setDuration(video.duration || 0);
+        if (autoPlay) {
+          video.play().catch(() => {
+            video.muted = true;
+            setIsMuted(true);
+            video.play().then(() => {
+              setIsPlaying(true);
+              setIsLoading(false);
+              setMutedAutoplayNotice(true);
+            }).catch(() => {
+              video.muted = false;
+              setIsMuted(false);
+              setIsPlaying(false);
+              setIsLoading(false);
+            });
+          });
+        }
+      };
+      const handleError = () => {
+        if (embedUrl) {
+          setUseEmbedFallback(true);
+        } else {
+          setError("Không thể phát video.");
+          setIsLoading(false);
+        }
+      };
+
+      video.addEventListener("loadedmetadata", handleLoadedMeta, { once: true });
+      video.addEventListener("error", handleError, { once: true });
+
+      return () => {
+        window.clearTimeout(timeoutTimer);
+        video.removeEventListener("loadedmetadata", handleLoadedMeta);
+        video.removeEventListener("error", handleError);
       };
     } else if (embedUrl) {
       setUseEmbedFallback(true);
     } else {
       setError("Trình duyệt không hỗ trợ phát định dạng video này.");
+      setIsLoading(false);
     }
   }, [m3u8Url, preferM3U8, autoPlay, embedUrl]);
 
@@ -254,9 +361,22 @@ export function VideoPlayer({
     };
 
     const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleWaiting = () => setIsLoading(true);
-    const handlePlaying = () => setIsLoading(false);
+    const handlePause = () => {
+      setIsPlaying(false);
+      setIsLoading(false); // Stop buffering spinner when paused
+    };
+    const handleWaiting = () => {
+      // Only display spinner if video is playing and actively waiting for data
+      if (!video.paused) {
+        setIsLoading(true);
+      }
+    };
+    const handlePlaying = () => {
+      setIsPlaying(true);
+      setIsLoading(false);
+    };
+    const handleCanPlay = () => setIsLoading(false);
+    const handleLoadedData = () => setIsLoading(false);
     const handleEnded = () => {
       setIsPlaying(false);
       if (hasNextEpisode && onNextEpisode) {
@@ -269,6 +389,8 @@ export function VideoPlayer({
     video.addEventListener("pause", handlePause);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("playing", handlePlaying);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("loadeddata", handleLoadedData);
     video.addEventListener("ended", handleEnded);
 
     return () => {
@@ -277,6 +399,8 @@ export function VideoPlayer({
       video.removeEventListener("pause", handlePause);
       video.removeEventListener("waiting", handleWaiting);
       video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("loadeddata", handleLoadedData);
       video.removeEventListener("ended", handleEnded);
     };
   }, [hasNextEpisode, onNextEpisode, onTimeUpdate]);
@@ -314,29 +438,21 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Auto-adapt when user turns their phone horizontally to landscape
+  // Clear the CSS rotation when the device is physically turned to landscape.
   useEffect(() => {
     const handleOrientationChange = () => {
-      const isLandscape = window.innerWidth > window.innerHeight;
-      // If user rotated phone to landscape on mobile (short viewport) and video is actively playing
-      if (isLandscape && isPlaying && !isFullscreen && window.innerHeight <= 520) {
-        const video = videoRef.current;
-        const container = containerRef.current;
-        if (container?.requestFullscreen) {
-          container.requestFullscreen().catch(() => {
-            if (video && "webkitEnterFullscreen" in video) {
-              (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-            }
-          });
-        } else if (video && "webkitEnterFullscreen" in video) {
-          (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-        }
+      if (window.innerWidth > window.innerHeight) {
+        setIsRotationFallback(false);
       }
     };
 
     window.addEventListener("orientationchange", handleOrientationChange);
-    return () => window.removeEventListener("orientationchange", handleOrientationChange);
-  }, [isPlaying, isFullscreen]);
+    window.addEventListener("resize", handleOrientationChange);
+    return () => {
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      window.removeEventListener("resize", handleOrientationChange);
+    };
+  }, []);
 
   // Keyboard Shortcuts (Netflix Standard)
   useEffect(() => {
@@ -512,39 +628,37 @@ export function VideoPlayer({
     }
   }
 
-  // Instant one-tap screen rotate to landscape
-  function handleRotateScreen() {
-    const video = videoRef.current;
+  // Use native orientation locking when available, with a CSS rotation fallback.
+  async function handleRotateScreen() {
     const container = containerRef.current;
-    if (!video || !container) return;
+    if (!container) return;
 
-    // iOS iPhone native video full-bleed landscape mode
-    if ("webkitEnterFullscreen" in video) {
-      (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (orientation: "landscape") => Promise<void>;
+      unlock?: () => void;
+    };
+
+    if (isRotationFallback) {
+      setIsRotationFallback(false);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      orientation.unlock?.();
       return;
     }
 
-    // Android & standard browsers
-    if (!document.fullscreenElement) {
-      if (container.requestFullscreen) {
-        container
-          .requestFullscreen()
-          .then(() => {
-            if (screen.orientation && "lock" in screen.orientation) {
-              (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
-                .lock("landscape")
-                .catch(() => {});
-            }
-          })
-          .catch(() => {});
+    try {
+      if (container.requestFullscreen && orientation.lock) {
+        await container.requestFullscreen();
+        await orientation.lock("landscape");
+        return;
       }
-    } else {
-      if (screen.orientation && "lock" in screen.orientation) {
-        const isLandscape = window.innerWidth > window.innerHeight;
-        (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
-          .lock(isLandscape ? "portrait" : "landscape")
-          .catch(() => {});
-      }
+    } catch {
+      // Some browsers reject fullscreen or orientation locking; keep playback usable.
+    }
+
+    if (window.innerWidth <= window.innerHeight) {
+      setIsRotationFallback(true);
     }
   }
 
@@ -586,7 +700,31 @@ export function VideoPlayer({
   // If using embed iframe (fallback or when m3u8 is absent)
   if (!preferM3U8 && embedUrl) {
     return (
-      <div className="relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10">
+      <div
+        ref={containerRef}
+        className={cn(
+          "relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 group/embed",
+          isRotationFallback && "player-landscape-fallback",
+        )}
+      >
+        {m3u8Url && (
+          <button
+            type="button"
+            onClick={() => setUseEmbedFallback(false)}
+            className="absolute top-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/85 border border-white/20 px-3 py-1.5 text-xs font-semibold text-white shadow-xl backdrop-blur-md hover:bg-primary transition-all active:scale-95"
+          >
+            <span>Phát nguồn trực tiếp (HLS)</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleRotateScreen}
+          className="absolute left-2 top-2 z-30 grid size-9 place-items-center rounded-full bg-black/70 text-white/90 backdrop-blur-sm hover:bg-black"
+          title={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
+          aria-label={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
+        >
+          <Smartphone className="size-4 rotate-90 text-primary" />
+        </button>
         <iframe
           key={embedUrl}
           src={embedUrl}
@@ -613,6 +751,7 @@ export function VideoPlayer({
       className={cn(
         "group relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 select-none",
         !showControls && isPlaying && "cursor-none",
+        isRotationFallback && "player-landscape-fallback",
       )}
     >
       {/* Native HTML5 Video Player */}
@@ -629,11 +768,43 @@ export function VideoPlayer({
         preload="auto"
       />
 
-      {/* Buffering Spinner */}
+      {/* Big Center Play Button when paused and not actively loading */}
+      {!isPlaying && !isLoading && !error && (
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="absolute inset-0 grid place-items-center bg-black/35 hover:bg-black/50 transition-colors group/play"
+          aria-label="Phát video"
+        >
+          <div className="grid size-16 sm:size-20 place-items-center rounded-full bg-primary/95 text-white shadow-2xl transition-transform duration-200 group-hover/play:scale-110 active:scale-95">
+            <Play className="size-8 sm:size-10 fill-current ml-1 text-white" />
+          </div>
+        </button>
+      )}
+
+      {/* Buffering Spinner (Only when actively loading/buffering) */}
       {isLoading && !error && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/40 backdrop-blur-[2px]">
-          <Loader2 className="size-12 animate-spin text-primary" />
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-xs">
+          <div className="flex flex-col items-center gap-2.5">
+            <Loader2 className="size-11 animate-spin text-primary" />
+            <span className="text-xs text-white/85 font-medium drop-shadow">Đang tải luồng phim...</span>
+          </div>
         </div>
+      )}
+
+      {/* Muted Autoplay Indicator Notification */}
+      {mutedAutoplayNotice && isPlaying && isMuted && (
+        <button
+          type="button"
+          onClick={() => {
+            toggleMute();
+            setMutedAutoplayNotice(false);
+          }}
+          className="absolute top-16 left-4 z-30 inline-flex items-center gap-2 rounded-full bg-primary/95 px-3.5 py-1.5 text-xs font-bold text-white shadow-xl backdrop-blur-md hover:bg-primary transition-all active:scale-95 animate-in fade-in"
+        >
+          <VolumeX className="size-4" />
+          <span>Bấm để bật âm thanh 🔊</span>
+        </button>
       )}
 
       {/* Seek Feedback Animation (+10s, -10s) */}
@@ -890,6 +1061,24 @@ export function VideoPlayer({
                           {aspectRatio === "cover" ? "Phóng to (Cover)" : "Mặc định (16:9)"}
                         </span>
                       </button>
+
+                      {/* Switch to Embed Fallback if available */}
+                      {embedUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUseEmbedFallback(true);
+                            setIsSettingsOpen(false);
+                          }}
+                          className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors text-white"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-primary" />
+                            <span>Đổi sang Player dự phòng</span>
+                          </span>
+                          <span className="text-[11px] text-white/50">Embed</span>
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -967,8 +1156,8 @@ export function VideoPlayer({
               type="button"
               onClick={handleRotateScreen}
               className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
-              title="Xoay ngang màn hình"
-              aria-label="Xoay ngang màn hình"
+              title={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
+              aria-label={isRotationFallback ? "Trở lại chế độ thường" : "Xoay ngang màn hình"}
             >
               <Smartphone className="size-4 rotate-90 text-primary" />
             </button>
