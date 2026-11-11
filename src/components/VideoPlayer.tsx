@@ -79,6 +79,8 @@ export function VideoPlayer({
   const [bufferedEnd, setBufferedEnd] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [canAdjustVolume, setCanAdjustVolume] = useState(true);
+  const [isVolumeSliderOpen, setIsVolumeSliderOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [aspectRatio, setAspectRatio] = useState<"contain" | "cover">("contain");
   const [qualities, setQualities] = useState<QualityOption[]>([{ index: -1, label: "Tự động (Auto)" }]);
@@ -547,11 +549,23 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     video.volume = newVol;
-    setVolume(newVol);
+    const appliedVolume = video.volume;
+    const volumeWasApplied = Math.abs(appliedVolume - newVol) < 0.02;
+    setCanAdjustVolume(volumeWasApplied);
+    setVolume(volumeWasApplied ? newVol : appliedVolume);
+    if (!volumeWasApplied) return;
     if (newVol > 0 && video.muted) {
       video.muted = false;
       setIsMuted(false);
     }
+  }
+
+  function handleVolumeButtonClick() {
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      setIsVolumeSliderOpen((open) => !open);
+      return;
+    }
+    toggleMute();
   }
 
   function toggleMute() {
@@ -891,7 +905,7 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={togglePlay}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
               aria-label={isPlaying ? "Tạm dừng" : "Phát"}
             >
               {isPlaying ? <Pause className="size-4 sm:size-5 fill-current" /> : <Play className="size-4 sm:size-5 fill-current ml-0.5" />}
@@ -901,7 +915,7 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={() => seekBy(-10)}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
               title="Lùi 10 giây (←)"
             >
               <RotateCcw className="size-3.5 sm:size-4" />
@@ -911,19 +925,22 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={() => seekBy(10)}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
               title="Tua tới 10 giây (→)"
             >
               <RotateCw className="size-3.5 sm:size-4" />
             </button>
 
             {/* Volume Control with smooth custom slide-out track */}
-            <div className="group/vol flex items-center">
+            <div className="group/vol relative flex items-center">
               <button
                 type="button"
-                onClick={toggleMute}
-                className="grid size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
-                title="Bật/Tắt âm thanh (M)"
+                onClick={handleVolumeButtonClick}
+                className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
+                title={window.matchMedia("(pointer: coarse)").matches ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh (M)"}
+                aria-label={window.matchMedia("(pointer: coarse)").matches ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh"}
+                aria-expanded={isVolumeSliderOpen}
+                aria-controls="mobile-volume-slider"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX className="size-4 sm:size-5 text-primary" />
@@ -934,33 +951,64 @@ export function VideoPlayer({
                 )}
               </button>
 
-              {/* Slider with overflow-hidden - hidden on mobile touch screens */}
+              {/* Desktop volume slider */}
               <div className="hidden sm:flex h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/vol:w-20 group-hover/vol:px-1.5">
-                <div
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    changeVolume(pos);
-                  }}
-                  className="group/track relative flex h-4 w-full cursor-pointer items-center"
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={isMuted ? 0 : volume}
+                  onChange={(event) => changeVolume(Number(event.currentTarget.value))}
+                  aria-label="Âm lượng video"
                   title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
-                >
-                  <div className="relative h-1 w-full rounded-full bg-white/25 transition-all group-hover/track:h-1.5">
-                    <div
-                      style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
-                      className="absolute inset-y-0 left-0 rounded-full bg-white"
-                    />
-                    <div
-                      style={{ left: `${(isMuted ? 0 : volume) * 100}%` }}
-                      className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md opacity-0 transition-opacity group-hover/vol:opacity-100"
-                    />
-                  </div>
-                </div>
+                  className="h-4 w-full cursor-pointer accent-primary"
+                  disabled={!canAdjustVolume}
+                />
               </div>
+
+              {/* Mobile volume popover */}
+              {isVolumeSliderOpen && (
+                <div
+                  id="mobile-volume-slider"
+                  className="absolute bottom-full left-1/2 z-50 mb-2 w-52 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl sm:hidden"
+                >
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-white">Âm lượng</span>
+                    <span className="text-white/60">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={isMuted ? 0 : volume}
+                    onChange={(event) => changeVolume(Number(event.currentTarget.value))}
+                    aria-label="Âm lượng video"
+                    className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!canAdjustVolume}
+                  />
+                  {canAdjustVolume ? (
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      className="mt-1 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                      aria-label={isMuted ? "Bật tiếng" : "Tắt tiếng"}
+                    >
+                      {isMuted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                      {isMuted ? "Bật tiếng" : "Tắt tiếng"}
+                    </button>
+                  ) : (
+                    <p className="mt-1 text-[11px] leading-4 text-white/60">
+                      iOS không cho trang web chỉnh mức âm lượng. Hãy dùng nút âm lượng của thiết bị.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Time Indicator (Netflix-style tabular mono font) */}
-            <div className="ml-1 sm:ml-2 flex items-center font-mono text-[10px] sm:text-xs tabular-nums select-none tracking-tight">
+            <div className="ml-1 sm:ml-2 flex items-center font-mono text-[10px] sm:text-xs tabular-nums select-none tracking-tight max-[360px]:hidden">
               <span className="font-semibold text-white/95">{formatTime(currentTime)}</span>
               <span className="mx-0.5 sm:mx-1 text-white/35">/</span>
               <span className="text-white/55">{formatTime(duration)}</span>
@@ -991,7 +1039,7 @@ export function VideoPlayer({
                   setActiveSettingsTab("main");
                 }}
                 className={cn(
-                  "grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors",
+                  "grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors",
                   isSettingsOpen && "bg-white/20 text-primary",
                 )}
                 title="Cài đặt phát video"
@@ -1156,7 +1204,7 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={handleRotateScreen}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
               title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
               aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
             >
@@ -1167,7 +1215,7 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all"
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all"
               title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình (F)" : "Toàn màn hình (F)"}
               aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
             >
