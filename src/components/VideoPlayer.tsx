@@ -85,6 +85,9 @@ export function VideoPlayer({
   const [aspectRatio, setAspectRatio] = useState<"contain" | "cover">("contain");
   const [qualities, setQualities] = useState<QualityOption[]>([{ index: -1, label: "Tự động (Auto)" }]);
   const [currentQualityIndex, setCurrentQualityIndex] = useState(-1);
+  const [isTouchDevice] = useState(
+    () => navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches,
+  );
 
   // UI state
   const [isLoading, setIsLoading] = useState(true);
@@ -561,7 +564,7 @@ export function VideoPlayer({
   }
 
   function handleVolumeButtonClick() {
-    if (window.matchMedia("(pointer: coarse)").matches) {
+    if (isTouchDevice) {
       setIsVolumeSliderOpen((open) => !open);
       return;
     }
@@ -937,8 +940,8 @@ export function VideoPlayer({
                 type="button"
                 onClick={handleVolumeButtonClick}
                 className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
-                title={window.matchMedia("(pointer: coarse)").matches ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh (M)"}
-                aria-label={window.matchMedia("(pointer: coarse)").matches ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh"}
+                title={isTouchDevice ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh (M)"}
+                aria-label={isTouchDevice ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh"}
                 aria-expanded={isVolumeSliderOpen}
                 aria-controls="mobile-volume-slider"
               >
@@ -952,7 +955,12 @@ export function VideoPlayer({
               </button>
 
               {/* Desktop volume slider */}
-              <div className="hidden sm:flex h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/vol:w-20 group-hover/vol:px-1.5">
+              <div
+                className={cn(
+                  "h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out",
+                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-20 group-hover/vol:px-1.5",
+                )}
+              >
                 <input
                   type="range"
                   min="0"
@@ -968,10 +976,10 @@ export function VideoPlayer({
               </div>
 
               {/* Mobile volume popover */}
-              {isVolumeSliderOpen && (
+              {isTouchDevice && isVolumeSliderOpen && (
                 <div
                   id="mobile-volume-slider"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-52 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl sm:hidden"
+                  className="absolute bottom-full left-1/2 z-50 mb-2 w-52 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs">
                     <span className="font-semibold text-white">Âm lượng</span>
