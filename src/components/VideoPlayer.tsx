@@ -15,6 +15,7 @@ import {
   Scaling,
   Settings,
   SkipForward,
+  Smartphone,
   Volume1,
   Volume2,
   VolumeX,
@@ -280,14 +281,62 @@ export function VideoPlayer({
     };
   }, [hasNextEpisode, onNextEpisode, onTimeUpdate]);
 
-  // Fullscreen change listener
+  // Fullscreen & WebKit (iOS) change listeners
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const isFs = Boolean(
+        document.fullscreenElement ||
+        (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
+        (videoRef.current as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+      );
+      setIsFullscreen(isFs);
     };
+
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+    const video = videoRef.current;
+    const handleWebkitBegin = () => setIsFullscreen(true);
+    const handleWebkitEnd = () => setIsFullscreen(false);
+
+    if (video) {
+      video.addEventListener("webkitbeginfullscreen", handleWebkitBegin);
+      video.addEventListener("webkitendfullscreen", handleWebkitEnd);
+    }
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      if (video) {
+        video.removeEventListener("webkitbeginfullscreen", handleWebkitBegin);
+        video.removeEventListener("webkitendfullscreen", handleWebkitEnd);
+      }
+    };
   }, []);
+
+  // Auto-adapt when user turns their phone horizontally to landscape
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      const isLandscape = window.innerWidth > window.innerHeight;
+      // If user rotated phone to landscape on mobile (short viewport) and video is actively playing
+      if (isLandscape && isPlaying && !isFullscreen && window.innerHeight <= 520) {
+        const video = videoRef.current;
+        const container = containerRef.current;
+        if (container?.requestFullscreen) {
+          container.requestFullscreen().catch(() => {
+            if (video && "webkitEnterFullscreen" in video) {
+              (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+            }
+          });
+        } else if (video && "webkitEnterFullscreen" in video) {
+          (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+        }
+      }
+    };
+
+    window.addEventListener("orientationchange", handleOrientationChange);
+    return () => window.removeEventListener("orientationchange", handleOrientationChange);
+  }, [isPlaying, isFullscreen]);
 
   // Keyboard Shortcuts (Netflix Standard)
   useEffect(() => {
@@ -421,11 +470,81 @@ export function VideoPlayer({
 
   function toggleFullscreen() {
     const container = containerRef.current;
+    const video = videoRef.current;
     if (!container) return;
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {});
+
+    const isCurrentlyFullscreen = Boolean(
+      document.fullscreenElement ||
+      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
+      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen
+    );
+
+    if (!isCurrentlyFullscreen) {
+      if (container.requestFullscreen) {
+        container
+          .requestFullscreen()
+          .then(() => {
+            if (screen.orientation && "lock" in screen.orientation) {
+              (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
+                .lock("landscape")
+                .catch(() => {});
+            }
+          })
+          .catch(() => {
+            if (video && "webkitEnterFullscreen" in video) {
+              (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+            }
+          });
+      } else if (video && "webkitEnterFullscreen" in video) {
+        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+      }
     } else {
-      document.exitFullscreen().catch(() => {});
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
+        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      } else if (video && "webkitExitFullscreen" in video) {
+        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      }
+      if (screen.orientation && "unlock" in screen.orientation) {
+        screen.orientation.unlock();
+      }
+    }
+  }
+
+  // Instant one-tap screen rotate to landscape
+  function handleRotateScreen() {
+    const video = videoRef.current;
+    const container = containerRef.current;
+    if (!video || !container) return;
+
+    // iOS iPhone native video full-bleed landscape mode
+    if ("webkitEnterFullscreen" in video) {
+      (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+      return;
+    }
+
+    // Android & standard browsers
+    if (!document.fullscreenElement) {
+      if (container.requestFullscreen) {
+        container
+          .requestFullscreen()
+          .then(() => {
+            if (screen.orientation && "lock" in screen.orientation) {
+              (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
+                .lock("landscape")
+                .catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      if (screen.orientation && "lock" in screen.orientation) {
+        const isLandscape = window.innerWidth > window.innerHeight;
+        (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
+          .lock(isLandscape ? "portrait" : "landscape")
+          .catch(() => {});
+      }
     }
   }
 
@@ -843,12 +962,24 @@ export function VideoPlayer({
               <PictureInPicture2 className="size-4" />
             </button>
 
+            {/* Rotate to landscape button (Mobile & touch-friendly) */}
+            <button
+              type="button"
+              onClick={handleRotateScreen}
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
+              title="Xoay ngang màn hình"
+              aria-label="Xoay ngang màn hình"
+            >
+              <Smartphone className="size-4 rotate-90 text-primary" />
+            </button>
+
             {/* Fullscreen */}
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all"
               title="Toàn màn hình (F)"
+              aria-label="Toàn màn hình"
             >
               {isFullscreen ? <Minimize className="size-4 sm:size-5" /> : <Maximize className="size-4 sm:size-5" />}
             </button>
