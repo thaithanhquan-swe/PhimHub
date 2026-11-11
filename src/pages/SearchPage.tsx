@@ -6,6 +6,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieCard } from "@/components/MovieCard";
 import { RequestError } from "@/components/RequestState";
 import type { Movie } from "@/data/movies";
+import { useSyncSearch } from "@/hooks/useSyncSearch";
 import { cn } from "@/lib/utils";
 import {
   getMoviesByCategory,
@@ -36,6 +37,7 @@ export function SearchPage() {
   const [results, setResults] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { syncSearch, error: telemetryError } = useSyncSearch();
 
   useEffect(() => setInput(query), [query]);
 
@@ -52,6 +54,7 @@ export function SearchPage() {
     setError("");
 
     if (debouncedQuery) {
+      void syncSearch(debouncedQuery);
       searchMovies(debouncedQuery, 1, controller.signal)
         .then(setResults)
         .catch((reason: unknown) => {
@@ -83,7 +86,7 @@ export function SearchPage() {
     }
 
     return () => controller.abort();
-  }, [debouncedQuery, activeFilter]);
+  }, [debouncedQuery, activeFilter, syncSearch]);
 
   function handleFilterClick(label: string) {
     setActiveFilter(label);
@@ -140,6 +143,11 @@ export function SearchPage() {
 
       {loading && <LoadingSkeleton rows={2} />}
       {error && <RequestError message={error} />}
+      {telemetryError && (
+        <p className="mb-4 text-center text-xs text-amber-300" role="status">
+          Không thể đồng bộ lịch sử tìm kiếm: {telemetryError}
+        </p>
+      )}
 
       {!loading && !error && debouncedQuery && results.length === 0 && (
         <div className="py-12 text-center">

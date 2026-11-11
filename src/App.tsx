@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { WatchHistoryProvider } from "@/context/WatchHistoryContext";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import { AdminPage } from "@/pages/AdminPage";
 import { HomePage } from "@/pages/HomePage";
 import { MovieDetailPage } from "@/pages/MovieDetailPage";
 import { SchedulePage } from "@/pages/SchedulePage";
@@ -28,6 +29,7 @@ function AppRoutes() {
         <Route path="/movie/:id" element={<MovieDetailPage />} />
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route
           path="*"
           element={

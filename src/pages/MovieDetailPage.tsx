@@ -20,6 +20,7 @@ import { VideoPlayer } from "@/components/VideoPlayer";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
+import { useSyncWatchProgress } from "@/hooks/useSyncWatchProgress";
 import { cn } from "@/lib/utils";
 import {
   getFranchiseParts,
@@ -45,6 +46,10 @@ export function MovieDetailPage() {
   const playerRef = useRef<HTMLDivElement>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
+  const { onTimeUpdate: syncWatchProgress, error: watchSyncError } = useSyncWatchProgress(
+    movie?.id ?? "",
+    movie?.title ?? "",
+  );
   const [resumedFromHistory, setResumedFromHistory] = useState(false);
   const [preferEmbed, setPreferEmbed] = useState(false);
 
@@ -395,8 +400,14 @@ export function MovieDetailPage() {
                 autoPlay={true}
                 hasNextEpisode={hasNextEpisode}
                 onNextEpisode={handleNextEpisode}
+                onTimeUpdate={syncWatchProgress}
                 preferEmbed={preferEmbed}
               />
+              {watchSyncError && (
+                <p className="mt-2 text-xs text-amber-300" role="status">
+                  Không thể đồng bộ tiến trình xem: {watchSyncError}
+                </p>
+              )}
 
               {/* Real-time streaming source info with source switcher */}
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">
