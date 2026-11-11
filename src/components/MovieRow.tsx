@@ -99,14 +99,14 @@ export function MovieRow({
 
       {/* Main Row Container with middle navigation buttons & drag support */}
       <div className="relative">
-        {/* Left Arrow Button (vertically centered in the middle of card row) */}
+        {/* Left Arrow Button (vertically centered on the poster) */}
         <button
           type="button"
           onClick={() => scroll(-1)}
           disabled={!canScrollLeft}
           aria-label={`Cuộn ${title} sang trái`}
           className={cn(
-            "absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "absolute left-1 sm:left-3 top-[40%] -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollLeft
               ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
@@ -134,14 +134,14 @@ export function MovieRow({
           ))}
         </div>
 
-        {/* Right Arrow Button (vertically centered in the middle of card row) */}
+        {/* Right Arrow Button (vertically centered on the poster) */}
         <button
           type="button"
           onClick={() => scroll(1)}
           disabled={!canScrollRight}
           aria-label={`Cuộn ${title} sang phải`}
           className={cn(
-            "absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "absolute right-1 sm:right-3 top-[40%] -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollRight
               ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
