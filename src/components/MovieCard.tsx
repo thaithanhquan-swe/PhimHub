@@ -21,13 +21,14 @@ export function MovieCard({ movie }: { movie: Movie }) {
           alt={`Poster phim ${movie.title}`}
           loading="lazy"
           decoding="async"
+          draggable={false}
           onError={(e) => {
             const target = e.currentTarget;
             if (movie.backdropUrl && target.src !== movie.backdropUrl) {
               target.src = movie.backdropUrl;
             }
           }}
-          className="poster-image size-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="poster-image size-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none select-none"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
 
