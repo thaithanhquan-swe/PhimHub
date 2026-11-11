@@ -262,7 +262,7 @@ export function MovieDetailPage() {
                     key={p.slug}
                     to={`/movie/${p.slug}?play=true`}
                     className={cn(
-                      "px-3 py-1 rounded text-xs font-semibold border transition-all",
+                      "px-3 py-1.5 min-h-[34px] inline-flex items-center rounded text-xs font-semibold border transition-all active:scale-95",
                       p.isCurrent
                         ? "bg-[#c4ea3b] text-black border-[#c4ea3b] font-bold shadow-md shadow-[#c4ea3b]/25"
                         : "bg-[#1f1f23]/90 text-white/90 border-white/20 hover:border-white/60 hover:bg-white/10",
@@ -280,7 +280,7 @@ export function MovieDetailPage() {
                 <button
                   type="button"
                   onClick={scrollToPlayer}
-                  className="inline-flex items-center gap-2 rounded bg-white px-5 py-2.5 text-sm font-bold text-black shadow-lg transition-transform hover:scale-105 hover:bg-white/90"
+                  className="inline-flex items-center gap-2 rounded bg-white px-5 py-2.5 text-sm font-bold text-black shadow-lg transition-transform hover:scale-105 hover:bg-white/90 active:scale-95"
                 >
                   <Play className="size-4 fill-current text-primary" /> Xem phim ngay
                 </button>
@@ -293,7 +293,7 @@ export function MovieDetailPage() {
               <button
                 type="button"
                 onClick={() => toggle(movie)}
-                className="inline-flex items-center gap-2 rounded bg-white/15 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/25"
+                className="inline-flex items-center gap-2 rounded bg-white/15 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/25 active:scale-95"
               >
                 {isSaved ? (
                   <>
@@ -309,7 +309,7 @@ export function MovieDetailPage() {
               <button
                 type="button"
                 onClick={handleShare}
-                className="inline-flex items-center gap-2 rounded bg-white/10 px-3.5 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded bg-white/10 px-3.5 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 active:scale-95"
                 title="Chia sẻ liên kết phim"
               >
                 <Share2 className="size-4" />
@@ -349,10 +349,10 @@ export function MovieDetailPage() {
                       setCurrentEpisodeIndex(0);
                     }}
                     className={cn(
-                      "rounded px-3 py-1 text-xs font-semibold transition-colors",
+                      "rounded px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all active:scale-95",
                       idx === currentServerIndex
-                        ? "bg-primary text-white"
-                        : "bg-white/10 text-white/70 hover:bg-white/20",
+                        ? "bg-primary text-white shadow-md shadow-primary/30"
+                        : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
                     )}
                   >
                     {server.server_name}
@@ -441,7 +441,7 @@ export function MovieDetailPage() {
                       type="button"
                       onClick={() => setCurrentEpisodeIndex(idx)}
                       className={cn(
-                        "min-w-10 sm:min-w-12 rounded px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all",
+                        "min-w-10 sm:min-w-12 min-h-[38px] rounded px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all active:scale-95 inline-flex items-center justify-center",
                         isActive
                           ? "bg-primary text-white shadow-md shadow-primary/30 scale-105"
                           : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",

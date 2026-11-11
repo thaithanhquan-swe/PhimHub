@@ -261,7 +261,7 @@ export function HomePage() {
                     type="button"
                     disabled={pageParam <= 1}
                     onClick={() => handlePageChange(pageParam - 1)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-30 disabled:pointer-events-none hover:bg-white/15"
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 min-h-[40px] text-xs font-semibold text-white transition-all disabled:opacity-30 disabled:pointer-events-none hover:bg-white/15 active:scale-95"
                   >
                     <ChevronLeft className="size-4" />
                     <span className="hidden sm:inline">Trang trước</span>
@@ -284,7 +284,7 @@ export function HomePage() {
                             type="button"
                             onClick={() => handlePageChange(pageNum)}
                             className={cn(
-                              "grid size-9 place-items-center rounded-lg text-xs font-bold transition-all",
+                              "grid size-10 place-items-center rounded-lg text-xs font-bold transition-all active:scale-95",
                               isCurrent
                                 ? "bg-primary text-white shadow-md shadow-primary/40 scale-105"
                                 : "bg-white/5 text-white/70 hover:bg-white/15 hover:text-white border border-white/10",
@@ -301,7 +301,7 @@ export function HomePage() {
                     type="button"
                     disabled={pageParam >= catalogResult.totalPage}
                     onClick={() => handlePageChange(pageParam + 1)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-30 disabled:pointer-events-none hover:bg-white/15"
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 min-h-[40px] text-xs font-semibold text-white transition-all disabled:opacity-30 disabled:pointer-events-none hover:bg-white/15 active:scale-95"
                   >
                     <span className="hidden sm:inline">Trang sau</span>
                     <ChevronRight className="size-4" />
