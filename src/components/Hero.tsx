@@ -1,6 +1,7 @@
 import {
   Bookmark,
   BookmarkCheck,
+  Calendar,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
@@ -11,7 +12,7 @@ import {
   Sparkles,
   Tv,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -23,6 +24,7 @@ const CATEGORIES = [
   { label: "Phim bộ", type: "tv", icon: Tv },
   { label: "Phim lẻ", type: "movie", icon: Film },
   { label: "Hoạt hình", type: "hoat-hinh", icon: Clapperboard },
+  { label: "Lịch chiếu", type: "schedule", icon: Calendar },
   { label: "Đã lưu", type: "saved", icon: Bookmark },
 ];
 
@@ -46,20 +48,18 @@ export function Hero({
   const activeType = searchParams.get("type");
   const isSavedList = searchParams.get("list") === "saved";
 
-  const timerRef = useRef<number | null>(null);
-
-  // Auto-play loop
+  // Continuous auto-play loop (every 5 seconds, not stopped by mouse hover)
   useEffect(() => {
     if (list.length <= 1 || isPaused) return;
 
-    timerRef.current = window.setInterval(() => {
+    const interval = window.setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % list.length);
-    }, 5500);
+    }, 5000);
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      window.clearInterval(interval);
     };
-  }, [list.length, isPaused, currentIndex]);
+  }, [list.length, isPaused]);
 
   if (list.length === 0) return null;
 
@@ -80,6 +80,8 @@ export function Hero({
   function handleCategoryClick(catType: string | null) {
     if (catType === "saved") {
       navigate("/?list=saved");
+    } else if (catType === "schedule") {
+      navigate("/schedule");
     } else if (catType === null) {
       navigate("/");
     } else {
@@ -89,8 +91,6 @@ export function Hero({
 
   return (
     <section
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
       className="group relative -mt-[66px] flex min-h-[580px] sm:min-h-[680px] lg:min-h-[760px] flex-col justify-end overflow-hidden pb-16 sm:pb-24 pt-28 sm:pt-36 lg:pt-40"
       aria-label="Phim nổi bật"
     >
@@ -296,7 +296,7 @@ export function Hero({
                   onClick={() => setCurrentIndex(idx)}
                   aria-label={`Chuyển đến phim ${idx + 1}: ${m.title}`}
                   className={cn(
-                    "h-2 rounded-full transition-all duration-300",
+                    "relative h-2 rounded-full transition-all duration-300 overflow-hidden",
                     isActive
                       ? "w-8 bg-primary shadow-sm shadow-primary/50"
                       : "w-2.5 bg-white/30 hover:bg-white/60",
