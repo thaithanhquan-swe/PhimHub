@@ -99,16 +99,16 @@ export function MovieRow({
 
       {/* Main Row Container with middle navigation buttons & drag support */}
       <div className="relative">
-        {/* Left Arrow Button (vertically centered on the poster) */}
+        {/* Left Arrow Button (desktop hover) */}
         <button
           type="button"
           onClick={() => scroll(-1)}
           disabled={!canScrollLeft}
           aria-label={`Cuộn ${title} sang trái`}
           className={cn(
-            "absolute left-1 sm:left-3 top-[40%] -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute left-1 sm:left-3 top-[40%] -translate-y-1/2 z-30 size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollLeft
-              ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
+              ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >
@@ -125,7 +125,7 @@ export function MovieRow({
           onClickCapture={handleClickCapture}
           onScroll={updateScrollButtons}
           className={cn(
-            "hide-scrollbar grid grid-flow-col auto-cols-[38vw] gap-2 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]",
+            "hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]",
             isDragging ? "cursor-grabbing select-none" : "cursor-grab",
           )}
         >
@@ -134,16 +134,16 @@ export function MovieRow({
           ))}
         </div>
 
-        {/* Right Arrow Button (vertically centered on the poster) */}
+        {/* Right Arrow Button (desktop hover) */}
         <button
           type="button"
           onClick={() => scroll(1)}
           disabled={!canScrollRight}
           aria-label={`Cuộn ${title} sang phải`}
           className={cn(
-            "absolute right-1 sm:right-3 top-[40%] -translate-y-1/2 z-30 grid size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute right-1 sm:right-3 top-[40%] -translate-y-1/2 z-30 size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollRight
-              ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
+              ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >

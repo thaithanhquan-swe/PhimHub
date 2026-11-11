@@ -92,7 +92,7 @@ export function SearchPage() {
   }
 
   return (
-    <main className="min-h-[70vh] px-4 pb-16 pt-24 sm:px-[4.5%]">
+    <main className="min-h-[70vh] px-3.5 sm:px-[4.5%] pb-28 pt-20 sm:pt-24">
       {/* Search Input */}
       <label className="mx-auto mb-6 flex h-12 max-w-2xl items-center gap-3 border-b-2 border-white/60 px-2 focus-within:border-primary">
         <Search className="size-5 shrink-0 text-white/70" />
@@ -172,7 +172,7 @@ export function SearchPage() {
             </h1>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6">
             {results.map((movie) => (
               <MovieCard key={movie.id || movie.slug} movie={movie} />
             ))}

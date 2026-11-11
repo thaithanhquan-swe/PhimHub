@@ -108,16 +108,16 @@ export function ContinueWatchingRow() {
       </div>
 
       <div className="relative">
-        {/* Left Arrow Button */}
+        {/* Left Arrow Button (desktop hover) */}
         <button
           type="button"
           onClick={() => scroll(-1)}
           disabled={!canScrollLeft}
           aria-label="Cuộn lịch sử sang trái"
           className={cn(
-            "absolute -left-2 sm:left-1 top-1/2 -translate-y-1/2 z-30 grid size-10 sm:size-11 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute -left-2 sm:left-1 top-1/2 -translate-y-1/2 z-30 size-10 sm:size-11 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollLeft
-              ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
+              ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >
@@ -148,7 +148,7 @@ export function ContinueWatchingRow() {
             return (
               <div
                 key={item.slug || item.movieId}
-                className="group relative flex-none w-[240px] sm:w-[280px] rounded-lg overflow-hidden bg-[#1e1e1e] border border-white/10 hover:border-white/30 transition-all duration-300 shadow-md"
+                className="group relative flex-none w-[210px] sm:w-[280px] rounded-lg overflow-hidden bg-[#1e1e1e] border border-white/10 hover:border-white/30 transition-all duration-300 shadow-md"
               >
                 {/* Thumbnail Container */}
                 <div className="relative aspect-video w-full overflow-hidden bg-[#121212]">
@@ -222,16 +222,16 @@ export function ContinueWatchingRow() {
           })}
         </div>
 
-        {/* Right Arrow Button */}
+        {/* Right Arrow Button (desktop hover) */}
         <button
           type="button"
           onClick={() => scroll(1)}
           disabled={!canScrollRight}
           aria-label="Cuộn lịch sử sang phải"
           className={cn(
-            "absolute -right-2 sm:right-1 top-1/2 -translate-y-1/2 z-30 grid size-10 sm:size-11 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute -right-2 sm:right-1 top-1/2 -translate-y-1/2 z-30 size-10 sm:size-11 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollRight
-              ? "opacity-90 sm:opacity-0 sm:group-hover/row:opacity-100"
+              ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >

@@ -66,13 +66,13 @@ export function DropdownFilter({
       {isOpen && (
         <div
           className={cn(
-            "absolute top-full mt-2 z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150",
+            "absolute top-full mt-2 z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-w-[calc(100vw-1.5rem)] max-h-[65vh] overflow-y-auto",
             align === "right" ? "right-0" : "left-0",
             columns === 4
-              ? "w-[340px] sm:w-[480px] md:w-[560px] grid grid-cols-2 sm:grid-cols-4 gap-1.5"
+              ? "w-[320px] sm:w-[480px] md:w-[560px] grid grid-cols-2 sm:grid-cols-4 gap-1.5"
               : columns === 3
-                ? "w-[290px] sm:w-[390px] grid grid-cols-2 sm:grid-cols-3 gap-1.5"
-                : "w-[240px] grid grid-cols-2 gap-1.5",
+                ? "w-[280px] sm:w-[390px] grid grid-cols-2 sm:grid-cols-3 gap-1.5"
+                : "w-[230px] grid grid-cols-2 gap-1.5",
           )}
         >
           {options.map((opt) => {

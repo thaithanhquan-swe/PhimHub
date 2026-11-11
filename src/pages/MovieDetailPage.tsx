@@ -175,9 +175,9 @@ export function MovieDetailPage() {
   }
 
   return (
-    <main className="pb-16 pt-[62px] lg:pt-[68px]">
+    <main className="pb-28 lg:pb-16 pt-[62px] sm:pt-[66px] lg:pt-[72px]">
       {/* Banner & Information */}
-      <section className="relative min-h-[460px] overflow-hidden sm:min-h-[560px]">
+      <section className="relative min-h-[420px] overflow-hidden sm:min-h-[560px]">
         <img
           src={getBackdropUrl(movie)}
           alt={movie.title}
@@ -321,7 +321,7 @@ export function MovieDetailPage() {
       </section>
 
       {/* Video Player Section */}
-      <section ref={playerRef} id="player" className="scroll-mt-20 px-4 py-8 sm:px-[4.5%]">
+      <section ref={playerRef} id="player" className="scroll-mt-20 px-3 sm:px-[4.5%] py-6 sm:py-8">
         <div className="mx-auto max-w-5xl">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
@@ -432,7 +432,7 @@ export function MovieDetailPage() {
                 </h3>
                 <span className="text-xs text-white/50">{currentServer.server_name}</span>
               </div>
-              <div className="flex max-h-64 flex-wrap gap-2 overflow-y-auto pr-1">
+              <div className="flex max-h-64 flex-wrap gap-1.5 sm:gap-2 overflow-y-auto pr-1">
                 {currentServer.items.map((ep: EpisodeItem, idx: number) => {
                   const isActive = idx === currentEpisodeIndex;
                   return (
@@ -441,7 +441,7 @@ export function MovieDetailPage() {
                       type="button"
                       onClick={() => setCurrentEpisodeIndex(idx)}
                       className={cn(
-                        "min-w-12 rounded px-3 py-1.5 text-xs font-bold transition-all",
+                        "min-w-10 sm:min-w-12 rounded px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all",
                         isActive
                           ? "bg-primary text-white shadow-md shadow-primary/30 scale-105"
                           : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",

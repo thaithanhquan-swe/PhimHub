@@ -156,7 +156,7 @@ export function HomePage() {
   if (!sections && !catalogResult && !error && !savedOnly) return <LoadingSkeleton />;
 
   return (
-    <main className="pb-16 min-h-screen">
+    <main className="pb-28 lg:pb-16 min-h-screen">
       {/* Hero Banner Carousel (Shown on default Home page ONLY for maximum smoothness & fast category page loads) */}
       {!savedOnly && !isFilterMode && featuredMovies.length > 0 && (
         <Hero
@@ -247,7 +247,7 @@ export function HomePage() {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                   {catalogResult.movies.map((movie) => (
                     <MovieCard key={movie.id || movie.slug} movie={movie} />
                   ))}

@@ -443,6 +443,27 @@ export function VideoPlayer({
     }
   }
 
+  // Touch scrub for mobile devices
+  const handleTimelineScrubTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!videoRef.current || !duration || duration <= 0) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    videoRef.current.currentTime = pos * duration;
+    setCurrentTime(pos * duration);
+    resetHideControlsTimer();
+  };
+
+  const handleVideoClick = () => {
+    if (!showControls && isPlaying) {
+      setShowControls(true);
+      resetHideControlsTimer();
+      return;
+    }
+    togglePlay();
+  };
+
   // If using embed iframe (fallback or when m3u8 is absent)
   if (!preferM3U8 && embedUrl) {
     return (
@@ -480,7 +501,7 @@ export function VideoPlayer({
         ref={videoRef}
         playsInline
         poster={poster}
-        onClick={togglePlay}
+        onClick={handleVideoClick}
         onDoubleClick={toggleFullscreen}
         className={cn(
           "size-full bg-black transition-all",
@@ -535,6 +556,8 @@ export function VideoPlayer({
         {/* Interactive Scrub Timeline Bar */}
         <div
           onClick={handleTimelineScrub}
+          onTouchStart={handleTimelineScrubTouch}
+          onTouchMove={handleTimelineScrubTouch}
           onMouseMove={handleTimelineHover}
           onMouseLeave={() => setHoverTime(null)}
           className="group/timeline relative mb-3.5 flex h-4 w-full cursor-pointer items-center"
@@ -572,35 +595,35 @@ export function VideoPlayer({
         {/* Buttons Row */}
         <div className="flex items-center justify-between text-white">
           {/* Left Controls: Play, 10s back, 10s forward, Volume, Time */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-2">
             {/* Play / Pause */}
             <button
               type="button"
               onClick={togglePlay}
-              className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
               aria-label={isPlaying ? "Tạm dừng" : "Phát"}
             >
-              {isPlaying ? <Pause className="size-5 fill-current" /> : <Play className="size-5 fill-current ml-0.5" />}
+              {isPlaying ? <Pause className="size-4 sm:size-5 fill-current" /> : <Play className="size-4 sm:size-5 fill-current ml-0.5" />}
             </button>
 
             {/* Rewind 10s */}
             <button
               type="button"
               onClick={() => seekBy(-10)}
-              className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
               title="Lùi 10 giây (←)"
             >
-              <RotateCcw className="size-4" />
+              <RotateCcw className="size-3.5 sm:size-4" />
             </button>
 
             {/* Forward 10s */}
             <button
               type="button"
               onClick={() => seekBy(10)}
-              className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
               title="Tua tới 10 giây (→)"
             >
-              <RotateCw className="size-4" />
+              <RotateCw className="size-3.5 sm:size-4" />
             </button>
 
             {/* Volume Control with smooth custom slide-out track */}
@@ -608,20 +631,20 @@ export function VideoPlayer({
               <button
                 type="button"
                 onClick={toggleMute}
-                className="grid size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
+                className="grid size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
                 title="Bật/Tắt âm thanh (M)"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="size-5 text-primary" />
+                  <VolumeX className="size-4 sm:size-5 text-primary" />
                 ) : volume < 0.5 ? (
-                  <Volume1 className="size-5" />
+                  <Volume1 className="size-4 sm:size-5" />
                 ) : (
-                  <Volume2 className="size-5" />
+                  <Volume2 className="size-4 sm:size-5" />
                 )}
               </button>
 
-              {/* Slider with overflow-hidden so thumb never leaks onto speaker icon */}
-              <div className="flex h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/vol:w-20 group-hover/vol:px-1.5">
+              {/* Slider with overflow-hidden - hidden on mobile touch screens */}
+              <div className="hidden sm:flex h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/vol:w-20 group-hover/vol:px-1.5">
                 <div
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -646,24 +669,24 @@ export function VideoPlayer({
             </div>
 
             {/* Time Indicator (Netflix-style tabular mono font) */}
-            <div className="ml-2 flex items-center font-mono text-xs tabular-nums select-none tracking-tight">
+            <div className="ml-1 sm:ml-2 flex items-center font-mono text-[10px] sm:text-xs tabular-nums select-none tracking-tight">
               <span className="font-semibold text-white/95">{formatTime(currentTime)}</span>
-              <span className="mx-1 text-white/35">/</span>
+              <span className="mx-0.5 sm:mx-1 text-white/35">/</span>
               <span className="text-white/55">{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* Right Controls: Next Episode, Settings, PiP, Fullscreen */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-2">
             {/* Next Episode Button (if available) */}
             {hasNextEpisode && onNextEpisode && (
               <button
                 type="button"
                 onClick={onNextEpisode}
-                className="flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-semibold hover:bg-white/20 transition-colors"
+                className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 sm:px-2.5 sm:py-1.5 text-xs font-semibold hover:bg-white/20 transition-colors"
                 title="Tập tiếp theo (N)"
               >
-                <span>Tập tiếp</span>
+                <span className="hidden sm:inline">Tập tiếp</span>
                 <SkipForward className="size-3.5 fill-current" />
               </button>
             )}
@@ -677,7 +700,7 @@ export function VideoPlayer({
                   setActiveSettingsTab("main");
                 }}
                 className={cn(
-                  "grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors",
+                  "grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors",
                   isSettingsOpen && "bg-white/20 text-primary",
                 )}
                 title="Cài đặt phát video"
@@ -687,7 +710,7 @@ export function VideoPlayer({
 
               {/* Netflix-style Settings Popover Menu */}
               {isSettingsOpen && (
-                <div className="absolute bottom-12 right-0 z-50 w-64 rounded-xl border border-white/15 bg-[#181818]/95 p-2 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute bottom-11 sm:bottom-12 right-0 z-50 w-56 sm:w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-white/15 bg-[#181818]/95 p-2 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
                   {/* Settings Main Tab */}
                   {activeSettingsTab === "main" && (
                     <div className="space-y-1">
@@ -810,11 +833,11 @@ export function VideoPlayer({
               )}
             </div>
 
-            {/* Picture-in-Picture */}
+            {/* Picture-in-Picture (Hidden on small mobile screens) */}
             <button
               type="button"
               onClick={togglePiP}
-              className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
+              className="hidden sm:grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
               title="Hình trong hình (PiP)"
             >
               <PictureInPicture2 className="size-4" />
@@ -824,10 +847,10 @@ export function VideoPlayer({
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
+              className="grid size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
               title="Toàn màn hình (F)"
             >
-              {isFullscreen ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
+              {isFullscreen ? <Minimize className="size-4 sm:size-5" /> : <Maximize className="size-4 sm:size-5" />}
             </button>
           </div>
         </div>

@@ -116,28 +116,28 @@ export function SchedulePage() {
   }, [allSeries, selectedDay, selectedCategory]);
 
   return (
-    <main className="min-h-screen px-4 pb-20 pt-24 sm:px-[4.5%] sm:pt-28">
+    <main className="min-h-screen px-4 pb-28 pt-20 sm:px-[4.5%] sm:pt-28">
       {/* Header */}
-      <div className="mb-8 max-w-3xl">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/30 px-3 py-1 text-xs font-bold uppercase tracking-wider text-primary">
+      <div className="mb-6 sm:mb-8 max-w-3xl">
+        <div className="mb-2 sm:mb-3 flex items-center gap-2">
+          <span className="flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/30 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-bold uppercase tracking-wider text-primary">
             <Calendar className="size-3.5" /> Lịch phát sóng phim mới
           </span>
-          <span className="flex items-center gap-1 text-xs text-white/50">
+          <span className="flex items-center gap-1 text-[11px] sm:text-xs text-white/50">
             <Clock className="size-3.5" /> Cập nhật liên tục
           </span>
         </div>
-        <h1 className="font-display text-2xl font-black text-white sm:text-4xl">
+        <h1 className="font-display text-xl sm:text-3xl lg:text-4xl font-black text-white">
           Lịch Chiếu Phim & Tập Mới Trong Tuần
         </h1>
-        <p className="mt-2 text-xs text-white/70 sm:text-sm">
+        <p className="mt-1.5 sm:mt-2 text-xs text-white/70 sm:text-sm">
           Theo dõi khung giờ phát sóng của các bộ phim bộ, anime hoạt hình và gameshow truyền hình
           được cập nhật mới nhất mỗi ngày.
         </p>
       </div>
 
-      {/* Day Selector Buttons */}
-      <div className="mb-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
+      {/* Day Selector Buttons (Scrollable on mobile, wrapping on tablet/desktop) */}
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-3 sm:pb-4 border-b border-white/10 hide-scrollbar [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:flex-wrap">
         {DAYS_OF_WEEK.map((day) => {
           const isSelected = selectedDay === day.id;
           const isToday = todayDay === day.id;
@@ -148,15 +148,16 @@ export function SchedulePage() {
               type="button"
               onClick={() => setSelectedDay(day.id)}
               className={cn(
-                "relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-semibold transition-all duration-200",
+                "shrink-0 relative flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold transition-all duration-200",
                 isSelected
                   ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
                   : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
               )}
             >
-              <span>{day.name}</span>
+              <span className="sm:hidden">{day.short}</span>
+              <span className="hidden sm:inline">{day.name}</span>
               {isToday && (
-                <span className="rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <span className="rounded bg-black/40 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white">
                   Hôm nay
                 </span>
               )}

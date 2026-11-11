@@ -7,7 +7,7 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -26,6 +26,7 @@ export function Hero({
   const list = movies.length > 0 ? movies : movie ? [movie] : [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const touchStartXRef = useRef<number | null>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
 
   // Continuous auto-play loop (every 5 seconds, light and steady)
@@ -57,9 +58,26 @@ export function Hero({
     setCurrentIndex((prev) => (prev + 1) % list.length);
   }
 
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartXRef.current === null) return;
+    const touchEndX = e.changedTouches[0]?.clientX ?? 0;
+    const diff = touchStartXRef.current - touchEndX;
+    if (Math.abs(diff) > 45) {
+      if (diff > 0) handleNext();
+      else handlePrev();
+    }
+    touchStartXRef.current = null;
+  }
+
   return (
     <section
-      className="group relative -mt-[66px] flex min-h-[540px] sm:min-h-[640px] lg:min-h-[720px] flex-col justify-end overflow-hidden pb-14 sm:pb-20 pt-28 sm:pt-36 lg:pt-40"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className="group relative -mt-[62px] sm:-mt-[66px] flex min-h-[500px] sm:min-h-[640px] lg:min-h-[720px] flex-col justify-end overflow-hidden pb-12 sm:pb-20 pt-24 sm:pt-36 lg:pt-40"
       aria-label="Phim nổi bật"
     >
       {/* Background Slides with Hardware-accelerated Smooth Opacity Crossfade (No heavy scale/reflow) */}
@@ -183,14 +201,14 @@ export function Hero({
         </div>
       </div>
 
-      {/* Navigation Arrow Controls on Left and Right */}
+      {/* Navigation Arrow Controls on Left and Right (desktop & tablet) */}
       {list.length > 1 && (
         <>
           <button
             type="button"
             onClick={handlePrev}
             aria-label="Phim trước đó"
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 grid size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
+            className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
           >
             <ChevronLeft className="size-6" />
           </button>
@@ -198,7 +216,7 @@ export function Hero({
             type="button"
             onClick={handleNext}
             aria-label="Phim tiếp theo"
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 grid size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
+            className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
           >
             <ChevronRight className="size-6" />
           </button>
