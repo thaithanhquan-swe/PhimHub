@@ -27,6 +27,7 @@ export function Hero({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
 
   // Continuous auto-play loop (every 5 seconds, light and steady)
@@ -59,25 +60,38 @@ export function Hero({
   }
 
   function handleTouchStart(e: React.TouchEvent) {
+    const target = e.target as HTMLElement;
+    // Don't initiate carousel swipe if user touched any interactive button or link
+    if (target.closest("button") || target.closest("a")) {
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      return;
+    }
     touchStartXRef.current = e.touches[0]?.clientX ?? null;
+    touchStartYRef.current = e.touches[0]?.clientY ?? null;
   }
 
   function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartXRef.current === null) return;
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
     const touchEndX = e.changedTouches[0]?.clientX ?? 0;
-    const diff = touchStartXRef.current - touchEndX;
-    if (Math.abs(diff) > 45) {
-      if (diff > 0) handleNext();
+    const touchEndY = e.changedTouches[0]?.clientY ?? 0;
+    const diffX = touchStartXRef.current - touchEndX;
+    const diffY = touchStartYRef.current - touchEndY;
+
+    // Only swipe if horizontal motion is dominant and exceeds 45px
+    if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY) * 1.4) {
+      if (diffX > 0) handleNext();
       else handlePrev();
     }
     touchStartXRef.current = null;
+    touchStartYRef.current = null;
   }
 
   return (
     <section
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="group relative -mt-[62px] sm:-mt-[66px] flex min-h-[500px] sm:min-h-[640px] lg:min-h-[720px] flex-col justify-end overflow-hidden pb-12 sm:pb-20 pt-24 sm:pt-36 lg:pt-40"
+      className="group relative -mt-[62px] sm:-mt-[66px] flex min-h-[520px] sm:min-h-[640px] lg:min-h-[720px] flex-col justify-end overflow-hidden pb-12 sm:pb-20 pt-32 sm:pt-36 lg:pt-40"
       aria-label="Phim nổi bật"
     >
       {/* Background Slides with Hardware-accelerated Smooth Opacity Crossfade (No heavy scale/reflow) */}
@@ -168,14 +182,14 @@ export function Hero({
           <button
             type="button"
             onClick={() => onPlay(currentMovie)}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-6 text-sm font-bold text-black shadow-xl transition-all duration-200 hover:scale-105 hover:bg-white/90"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-6 text-sm font-bold text-black shadow-xl transition-all duration-200 hover:scale-105 hover:bg-white/90 active:scale-95 select-none"
           >
             <Play className="size-4 fill-current text-primary" /> Xem ngay
           </button>
 
           <Link
             to={`/movie/${movieId}`}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-white/20 px-5 text-sm font-semibold text-white transition-all duration-200 hover:bg-white/30 hover:scale-105"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-white/20 px-5 text-sm font-semibold text-white transition-all duration-200 hover:bg-white/30 hover:scale-105 active:scale-95 select-none"
           >
             <Info className="size-4" /> Chi tiết phim
           </Link>
@@ -184,7 +198,7 @@ export function Hero({
             type="button"
             onClick={() => toggle(currentMovie)}
             aria-label={isSaved ? "Xóa khỏi danh sách" : "Lưu vào danh sách"}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-black/40 border border-white/20 px-4 text-sm font-medium text-white transition-all hover:bg-black/60 hover:border-white/40"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-black/40 border border-white/20 px-4 text-sm font-medium text-white transition-all hover:bg-black/60 hover:border-white/40 active:scale-95 select-none"
           >
             {isSaved ? (
               <>
@@ -208,7 +222,7 @@ export function Hero({
             type="button"
             onClick={handlePrev}
             aria-label="Phim trước đó"
-            className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
+            className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white active:scale-95"
           >
             <ChevronLeft className="size-6" />
           </button>
@@ -216,7 +230,7 @@ export function Hero({
             type="button"
             onClick={handleNext}
             aria-label="Phim tiếp theo"
-            className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white"
+            className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-20 size-11 place-items-center rounded-full bg-black/40 border border-white/15 text-white/80 transition-all duration-200 hover:bg-black/80 hover:scale-110 hover:text-white active:scale-95"
           >
             <ChevronRight className="size-6" />
           </button>
@@ -227,15 +241,15 @@ export function Hero({
       {list.length > 1 && (
         <div className="relative z-20 mt-6 sm:mt-8 flex items-center justify-between px-4 sm:px-[4.5%]">
           {/* Slide Indicator Dots with Pause/Play Status */}
-          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 border border-white/10">
+          <div className="flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 border border-white/15 backdrop-blur-md">
             <button
               type="button"
               onClick={() => setIsPaused((prev) => !prev)}
               aria-label={isPaused ? "Tiếp tục tự động chạy" : "Tạm dừng"}
-              className="text-white/60 hover:text-white transition-colors mr-1"
+              className="grid size-8 place-items-center rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-90 transition-all"
               title={isPaused ? "Tiếp tục chạy slide" : "Tạm dừng slide"}
             >
-              {isPaused ? <Play className="size-3 fill-current" /> : <Pause className="size-3" />}
+              {isPaused ? <Play className="size-3.5 fill-current" /> : <Pause className="size-3.5" />}
             </button>
 
             {list.map((m, idx) => {
@@ -246,13 +260,17 @@ export function Hero({
                   type="button"
                   onClick={() => setCurrentIndex(idx)}
                   aria-label={`Chuyển đến phim ${idx + 1}: ${m.title}`}
-                  className={cn(
-                    "relative h-2 rounded-full transition-all duration-300 overflow-hidden",
-                    isActive
-                      ? "w-8 bg-primary shadow-sm shadow-primary/50"
-                      : "w-2.5 bg-white/30 hover:bg-white/60",
-                  )}
-                />
+                  className="group relative flex h-8 items-center px-1.5 active:scale-95 transition-transform"
+                >
+                  <span
+                    className={cn(
+                      "h-2 rounded-full transition-all duration-300 block",
+                      isActive
+                        ? "w-7 sm:w-8 bg-primary shadow-sm shadow-primary/50"
+                        : "w-2.5 bg-white/35 group-hover:bg-white/70",
+                    )}
+                  />
+                </button>
               );
             })}
           </div>
