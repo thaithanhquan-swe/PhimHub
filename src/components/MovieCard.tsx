@@ -89,20 +89,23 @@ export function MovieCard({ movie }: { movie: Movie }) {
           </p>
         )}
 
-        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-white/60 font-medium">
-          <span>{movie.year}</span>
-          <span className="text-white/30">•</span>
-          <span className="text-white/80">{movie.quality || "FHD"}</span>
+        <div
+          className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap text-[10px] font-medium text-white/60 sm:gap-1.5 sm:text-[11px]"
+          title={displayEpisode ? `${movie.year} · ${movie.quality || "FHD"} · ${movie.language || ""} · ${displayEpisode}` : undefined}
+        >
+          <span className="shrink-0">{movie.year}</span>
+          <span className="shrink-0 text-white/30">•</span>
+          <span className="shrink-0 text-white/80">{movie.quality || "FHD"}</span>
           {movie.language && (
             <>
-              <span className="text-white/30">•</span>
-              <span>{movie.language}</span>
+              <span className="shrink-0 text-white/30">•</span>
+              <span className="shrink-0">{movie.language}</span>
             </>
           )}
           {displayEpisode && (
             <>
-              <span className="text-white/30">•</span>
-              <span className="text-primary font-semibold">{displayEpisode}</span>
+              <span className="hidden shrink-0 text-white/30 sm:inline">•</span>
+              <span className="hidden min-w-0 truncate font-semibold text-primary sm:inline">{displayEpisode}</span>
             </>
           )}
         </div>
