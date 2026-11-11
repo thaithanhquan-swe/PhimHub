@@ -49,18 +49,24 @@ export function HomePage() {
       (yearParam && yearParam !== "all"),
   );
 
-  // Fetch standard home sections (if not in deep filter mode or for Hero)
+  // Fetch standard home sections (ONLY when on home page, avoiding redundant heavy calls in filter mode)
   useEffect(() => {
+    if (isFilterMode || savedOnly) {
+      setSections(null);
+      return;
+    }
+
     const controller = new AbortController();
     setError("");
-    getHomeSections(controller.signal, typeParam)
+    getHomeSections(controller.signal, null)
       .then(setSections)
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
         setError(reason instanceof Error ? reason.message : "Có lỗi khi tải danh sách phim.");
       });
+
     return () => controller.abort();
-  }, [attempt, typeParam]);
+  }, [attempt, isFilterMode, savedOnly]);
 
   // Fetch filtered catalog when in filter mode
   useEffect(() => {
@@ -135,7 +141,7 @@ export function HomePage() {
     const next = new URLSearchParams(searchParams);
     next.set("page", String(newPage));
     setSearchParams(next);
-    window.scrollTo({ top: 380, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const categoryTitle =
@@ -145,14 +151,14 @@ export function HomePage() {
         ? "Kho Phim Lẻ Chiếu Rạp Chọn Lọc"
         : typeParam === "hoat-hinh"
           ? "Kho Hoạt Hình & Anime Tuyển Chọn"
-          : "Kho Phim Tổng Hợp";
+          : "Kho Phim Chọn Lọc";
 
   if (!sections && !catalogResult && !error && !savedOnly) return <LoadingSkeleton />;
 
   return (
-    <main className="pb-16">
-      {/* Hero Banner Carousel (Shown on default Home and main Category pages) */}
-      {!savedOnly && featuredMovies.length > 0 && (
+    <main className="pb-16 min-h-screen">
+      {/* Hero Banner Carousel (Shown on default Home page ONLY for maximum smoothness & fast category page loads) */}
+      {!savedOnly && !isFilterMode && featuredMovies.length > 0 && (
         <Hero
           movies={featuredMovies}
           onPlay={(movie) => navigate(`/movie/${movie.slug || movie.id}?play=true`)}
@@ -179,7 +185,7 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Continue Watching Section */}
+      {/* Continue Watching Section (Home page) */}
       {!savedOnly && !isFilterMode && (
         <div className="relative z-20 mt-4 sm:mt-6">
           <ContinueWatchingRow />
@@ -195,18 +201,18 @@ export function HomePage() {
 
       {/* Filtered Catalog Mode (When viewing Phim lẻ, Phim bộ, Hoạt hình or custom filters) */}
       {!savedOnly && isFilterMode && (
-        <section className="relative z-20 mt-4 px-4 sm:px-[4.5%]">
+        <section className="relative z-20 pt-24 sm:pt-28 px-4 sm:px-[4.5%]">
           <div className="mb-4">
             <h1 className="font-display text-xl sm:text-2xl font-black text-white flex items-center gap-2">
               <Film className="size-6 text-primary" />
               <span>{categoryTitle}</span>
             </h1>
             <p className="mt-1 text-xs text-white/60">
-              Lọc theo thể loại, quốc gia, năm phát hành và định dạng yêu thích của bạn.
+              Khám phá và lọc phim theo thể loại, quốc gia, năm phát hành.
             </p>
           </div>
 
-          {/* Interactive Advanced Filter Bar */}
+          {/* Minimalist Filter Bar: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
           <MovieFilterBar
             values={{
               type: typeParam || "all",
