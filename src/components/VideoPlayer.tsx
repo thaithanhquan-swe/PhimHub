@@ -38,6 +38,14 @@ function formatTime(seconds: number): string {
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
+const AUDIO_BOOST_LEVELS = [
+  { val: 1.0, label: "100%", badge: "Tiêu chuẩn" },
+  { val: 2.0, label: "200%", badge: "To rõ" },
+  { val: 3.0, label: "300%", badge: "Khuyên dùng" },
+  { val: 4.0, label: "400%", badge: "Cực đại" },
+  { val: 5.0, label: "500%", badge: "Tối đa" },
+];
+
 type QualityOption = {
   index: number; // -1 for auto
   label: string;
@@ -1512,11 +1520,11 @@ export function VideoPlayer({
                       >
                         <span className="flex items-center gap-2">
                           <Volume2 className="size-4 text-white/70" />
-                          <span>Tăng cường âm thanh</span>
+                          <span>Khuếch đại âm thanh</span>
                         </span>
                         <span className="flex items-center gap-1 text-white/60">
                           <span className={audioBoostFactor > 1 ? "text-primary font-bold" : ""}>
-                            {audioBoostFactor === 3.0 ? "Siêu to (300%)" : `${Math.round(audioBoostFactor * 100)}%`}
+                            {`${Math.round(audioBoostFactor * 100)}%`}
                           </span>
                           <ChevronRight className="size-3.5" />
                         </span>
@@ -1627,37 +1635,44 @@ export function VideoPlayer({
                       <button
                         type="button"
                         onClick={() => setActiveSettingsTab("main")}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1 transition-colors"
                       >
                         <ChevronRight className="size-3.5 rotate-180" />
-                        <span>Tăng cường âm thanh</span>
+                        <span>Khuếch đại âm thanh</span>
                       </button>
-                      <p className="px-3 py-1 text-[11px] leading-relaxed text-white/50">
-                        Tăng âm lượng thực tế của phim to hơn mà thanh trượt vẫn ở mức 100% chuẩn, tự động chống rè/méo tiếng.
+                      <p className="px-3 pb-1.5 pt-0.5 text-[11px] leading-relaxed text-white/50">
+                        Tăng âm lượng nguồn phát và tự động chống rè tiếng.
                       </p>
-                      {[
-                        { val: 1.0, label: "Tiêu chuẩn (100%)" },
-                        { val: 2.0, label: "To rõ (200% / 2x)" },
-                        { val: 3.0, label: "Siêu to (300% / 3x - Khuyên dùng 🔥)" },
-                        { val: 4.0, label: "Cực đại (400% / 4x 🚀)" },
-                        { val: 5.0, label: "Tối đa (500% / 5x ⚡)" },
-                      ].map(({ val, label }) => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => {
-                            setBoostLevel(val);
-                            setIsSettingsOpen(false);
-                          }}
-                          className={cn(
-                            "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
-                            audioBoostFactor === val ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
-                          )}
-                        >
-                          <span>{label}</span>
-                          {audioBoostFactor === val && <Check className="size-3.5" />}
-                        </button>
-                      ))}
+                      {AUDIO_BOOST_LEVELS.map(({ val, label, badge }) => {
+                        const isSelected = audioBoostFactor === val;
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => {
+                              setBoostLevel(val);
+                              setIsSettingsOpen(false);
+                            }}
+                            className={cn(
+                              "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+                              isSelected ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-10 text-left font-bold tabular-nums">{label}</span>
+                              <span
+                                className={cn(
+                                  "text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors",
+                                  isSelected ? "bg-white/20 text-white" : "bg-white/10 text-white/60",
+                                )}
+                              >
+                                {badge}
+                              </span>
+                            </div>
+                            {isSelected && <Check className="size-3.5 stroke-[2.5]" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
