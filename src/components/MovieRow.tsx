@@ -28,6 +28,19 @@ export function MovieRow({
   const [hasEnteredViewport, setHasEnteredViewport] = useState(false);
   const [visibleMovieCount, setVisibleMovieCount] = useState(INITIAL_VISIBLE_MOVIES);
 
+  // Automatically ensure visible cards completely fill the row container on wide desktop viewports
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    if (
+      visibleMovieCount < movies.length &&
+      el.clientWidth > 0 &&
+      el.scrollWidth <= el.clientWidth + 50
+    ) {
+      setVisibleMovieCount((count) => Math.min(count + MOVIES_PER_BATCH, movies.length));
+    }
+  }, [visibleMovieCount, movies.length, hasEnteredViewport]);
+
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
@@ -167,21 +180,21 @@ export function MovieRow({
             onClickCapture={handleClickCapture}
             onScroll={handleScroll}
             className={cn(
-              "hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]",
+              "hide-scrollbar grid grid-flow-col auto-cols-[38vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[20vw] sm:gap-3 sm:px-[4.5%] md:auto-cols-[16.5vw] lg:auto-cols-[14vw] xl:auto-cols-[12.5vw] 2xl:auto-cols-[11vw]",
               isDragging ? "cursor-grabbing select-none" : "cursor-grab",
             )}
           >
             {movies.slice(0, visibleMovieCount).map((movie) => (
-              <MovieCard key={movie.id} movie={movie} />
+              <MovieCard key={movie.id || movie.slug} movie={movie} />
             ))}
           </div>
         ) : (
           <div
             aria-hidden="true"
-            className="hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-hidden px-4 pb-2 sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]"
+            className="hide-scrollbar grid grid-flow-col auto-cols-[38vw] xs:auto-cols-[30vw] gap-2.5 overflow-hidden px-4 pb-2 sm:auto-cols-[20vw] sm:gap-3 sm:px-[4.5%] md:auto-cols-[16.5vw] lg:auto-cols-[14vw] xl:auto-cols-[12.5vw] 2xl:auto-cols-[11vw]"
           >
-            {movies.slice(0, INITIAL_VISIBLE_MOVIES).map((movie) => (
-              <div key={movie.id} className="space-y-2">
+            {movies.slice(0, 10).map((movie, idx) => (
+              <div key={movie.id || movie.slug || idx} className="space-y-2">
                 <div className="aspect-[2/3] animate-pulse rounded-md bg-white/[0.08]" />
                 <div className="h-3 w-4/5 animate-pulse rounded bg-white/[0.08]" />
                 <div className="h-2.5 w-1/2 animate-pulse rounded bg-white/[0.06]" />
