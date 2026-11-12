@@ -109,16 +109,26 @@ export function TrailerBackground({
     const handleMessage = (e: MessageEvent) => {
       try {
         const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        // YouTube PlayerState: 0 = ENDED
-        if (data?.event === "onStateChange" && data?.info === 0) {
-          if (onEnded) {
-            onEnded();
-          } else if (iframeRef.current?.contentWindow) {
-            // If no onEnded callback (e.g. detail page), replay seamlessly without playlist buttons
-            iframeRef.current.contentWindow.postMessage(
-              JSON.stringify({ event: "command", func: "playVideo", args: [] }),
-              "*",
-            );
+        // YouTube PlayerState: 0 = ENDED, 2 = PAUSED
+        if (data?.event === "onStateChange") {
+          if (data?.info === 0) {
+            if (onEnded) {
+              onEnded();
+            } else if (iframeRef.current?.contentWindow) {
+              // If no onEnded callback (e.g. detail page), replay seamlessly without playlist buttons
+              iframeRef.current.contentWindow.postMessage(
+                JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                "*",
+              );
+            }
+          } else if (data?.info === 2) {
+            // If YouTube is paused for any reason, immediately resume playback so the pause icon disappears
+            if (iframeRef.current?.contentWindow) {
+              iframeRef.current.contentWindow.postMessage(
+                JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                "*",
+              );
+            }
           }
         }
       } catch {
@@ -232,8 +242,19 @@ export function TrailerBackground({
             />
           )}
 
-          {/* Physical click & interaction shield over video to prevent YouTube popups */}
-          <div className="absolute inset-0 size-full pointer-events-none z-10" />
+          {/* Physical click & interaction shield over video to prevent YouTube clicks/pauses */}
+          <div
+            className="absolute inset-0 size-full z-10 select-none cursor-default"
+            style={{ pointerEvents: "auto" }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          />
         </div>
       )}
     </div>
