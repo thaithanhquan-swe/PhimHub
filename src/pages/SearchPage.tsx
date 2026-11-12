@@ -7,6 +7,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieCard } from "@/components/MovieCard";
 import { RequestError } from "@/components/RequestState";
 import type { Movie } from "@/data/movies";
+import { useSyncSearch } from "@/hooks/useSyncSearch";
 import { cn } from "@/lib/utils";
 import {
   getMoviesByCategory,
@@ -36,6 +37,7 @@ export function SearchPage() {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [activeFilter, setActiveFilter] = useState<string>("Mới cập nhật");
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const { syncSearch, error: telemetryError } = useSyncSearch();
 
   useEffect(() => setInput(query), [query]);
 
@@ -49,10 +51,11 @@ export function SearchPage() {
   useEffect(() => {
     if (debouncedQuery) {
       document.title = `Tìm kiếm: "${debouncedQuery}" | PhimHub`;
+      void syncSearch(debouncedQuery);
     } else {
       document.title = `${activeFilter} - Tìm Phim | PhimHub`;
     }
-  }, [debouncedQuery, activeFilter]);
+  }, [debouncedQuery, activeFilter, syncSearch]);
 
   const activeQuickFilter = QUICK_FILTERS.find((filter) => filter.label === activeFilter) || QUICK_FILTERS[0];
   const resultsQuery = useQuery({
@@ -203,6 +206,11 @@ export function SearchPage() {
           message={error instanceof Error ? error.message : "Có lỗi khi tìm phim."}
           onRetry={() => void resultsQuery.refetch()}
         />
+      )}
+      {telemetryError && (
+        <p className="mb-4 text-center text-xs text-amber-300" role="status">
+          Không thể đồng bộ lịch sử tìm kiếm: {telemetryError}
+        </p>
       )}
 
       {!loading && !error && debouncedQuery && results.length === 0 && (
