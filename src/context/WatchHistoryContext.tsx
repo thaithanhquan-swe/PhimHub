@@ -14,6 +14,8 @@ export type WatchHistoryItem = {
   episodeName: string;
   episodeSlug: string;
   episodeIndex: number;
+  currentTime?: number;
+  duration?: number;
   quality?: string;
   language?: string;
   updatedAt: number;

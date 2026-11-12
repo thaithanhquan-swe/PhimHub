@@ -96,10 +96,12 @@ export function ContinueWatchingRow() {
           <span>Tiếp tục xem ({history.length})</span>
         </h2>
 
-        {history.length > 2 && (
+        {history.length > 0 && (
           <button
             type="button"
-            onClick={clearHistory}
+            onClick={() => {
+              if (window.confirm("Bạn có chắc muốn xóa toàn bộ lịch sử xem?")) clearHistory();
+            }}
             className="flex items-center gap-1 text-xs text-white/50 hover:text-white transition-colors"
           >
             <Trash2 className="size-3.5" />
@@ -164,7 +166,14 @@ export function ContinueWatchingRow() {
 
                   {/* Progress bar accent */}
                   <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20">
-                    <div className="h-full bg-primary w-2/3" />
+                    <div
+                      className="h-full bg-primary"
+                      style={{
+                        width: `${item.duration && item.duration > 0
+                          ? Math.min(100, Math.max(0, (item.currentTime ?? 0) / item.duration * 100))
+                          : 0}%`,
+                      }}
+                    />
                   </div>
 
                   {/* Center Play Button on hover */}
