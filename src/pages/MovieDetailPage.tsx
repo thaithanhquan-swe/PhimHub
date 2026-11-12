@@ -279,20 +279,21 @@ export function MovieDetailPage() {
               <span className="font-semibold text-white">{movie.year}</span>
               <span>·</span>
               <span>{movie.runtime}</span>
-              <a
-                href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Mở trang IMDb"
-                className="inline-flex items-center gap-1.5 rounded bg-[#f5c518] px-2 py-1 text-[11px] font-bold text-black hover:bg-[#ffda44]"
-              >
-                IMDb ↗
-                <span className="font-semibold">
-                  {imdb.rating !== undefined
-                    ? `${imdb.rating.toFixed(1)}/10`
-                    : movie.kind}
+              {imdb.rating !== undefined ? (
+                <a
+                  href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Mở trang IMDb"
+                  className="inline-flex items-center gap-1.5 rounded bg-[#f5c518] px-2 py-1 text-[11px] font-bold text-black hover:bg-[#ffda44]"
+                >
+                  IMDb ↗ <span className="font-semibold">{imdb.rating.toFixed(1)}/10</span>
+                </a>
+              ) : (
+                <span className="rounded bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/80">
+                  {movie.kind}
                 </span>
-              </a>
+              )}
               {movie.currentEpisode && (
                 <>
                   <span>·</span>
