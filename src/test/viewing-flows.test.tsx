@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { MovieCard } from "@/components/MovieCard";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { WatchHistoryProvider, useWatchHistory } from "@/context/WatchHistoryContext";
 import { WatchlistProvider, useWatchlist } from "@/context/WatchlistContext";
@@ -209,5 +211,18 @@ describe("IMDb metadata", () => {
       }),
     ).resolves.toEqual({ imdbId: "tt0111161", rating: 9.3 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the movie type instead of a missing IMDb rating on cards", () => {
+    render(
+      <MemoryRouter>
+        <WatchlistProvider>
+          <MovieCard movie={movie} />
+        </WatchlistProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Phim lẻ")).toBeTruthy();
+    expect(screen.queryByText("Chưa có điểm")).toBeNull();
   });
 });
