@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "PhimHub — Cả thế giới phim trong tầm tay",
+  "short_name": "PhimHub",
+  "description": "Khám phá phim mới và tiếp tục xem những bộ phim yêu thích.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

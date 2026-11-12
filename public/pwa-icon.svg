@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="phGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF334B" />
+      <stop offset="100%" stop-color="#E50914" />
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="26" fill="url(#phGrad)" />
+  <circle cx="22" cy="18" r="4.5" fill="white" opacity="0.3" />
+  <circle cx="50" cy="18" r="4.5" fill="white" opacity="0.3" />
+  <circle cx="78" cy="18" r="4.5" fill="white" opacity="0.3" />
+  <circle cx="22" cy="82" r="4.5" fill="white" opacity="0.3" />
+  <circle cx="50" cy="82" r="4.5" fill="white" opacity="0.3" />
+  <circle cx="78" cy="82" r="4.5" fill="white" opacity="0.3" />
+  <path d="M42 34 L71 50 L42 66 Z" fill="white" />
+</svg>
