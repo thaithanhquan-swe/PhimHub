@@ -62,7 +62,7 @@ export function TrailerBackground({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const parsedTrailer = useMemo(() => {
@@ -97,39 +97,101 @@ export function TrailerBackground({
     return () => observer.disconnect();
   }, [parsedTrailer]);
 
-  // Reset video loaded state when trailer changes
-  useEffect(() => {
-    setIsVideoLoaded(false);
-  }, [parsedTrailer?.type === "youtube" ? parsedTrailer.id : parsedTrailer?.type === "video" ? parsedTrailer.url : null]);
+  // Always reset playing state when trailer changes or becomes inactive
+  const trailerKey = parsedTrailer
+    ? parsedTrailer.type === "youtube"
+      ? parsedTrailer.id
+      : parsedTrailer.url
+    : null;
 
-  // Listen for YouTube postMessage API events (onStateChange: 0 means video ENDED)
+  useEffect(() => {
+    setIsPlaying(false);
+  }, [trailerKey, isActive]);
+
+  // Send commands to YouTube iframe
+  const sendYouTubeCommand = (func: string, args: unknown[] = []) => {
+    try {
+      const win = iframeRef.current?.contentWindow;
+      if (win) {
+        win.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+      }
+    } catch {
+      // Ignore cross-origin error
+    }
+  };
+
+  const kickstartYouTube = () => {
+    try {
+      const win = iframeRef.current?.contentWindow;
+      if (win) {
+        win.postMessage(JSON.stringify({ event: "listening" }), "*");
+      }
+      sendYouTubeCommand("mute");
+      sendYouTubeCommand("playVideo");
+    } catch {
+      // Ignore
+    }
+  };
+
+  // Listen for YouTube postMessage API events
   useEffect(() => {
     if (!isActive || parsedTrailer?.type !== "youtube") return;
 
     const handleMessage = (e: MessageEvent) => {
+      if (
+        typeof e.origin === "string" &&
+        !e.origin.includes("youtube.com") &&
+        !e.origin.includes("youtube-nocookie.com")
+      ) {
+        return;
+      }
+
       try {
         const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        // YouTube PlayerState: 0 = ENDED, 2 = PAUSED
-        if (data?.event === "onStateChange") {
-          if (data?.info === 0) {
+
+        // When YouTube player reports ready, immediately kickstart playback
+        if (data?.event === "onReady") {
+          kickstartYouTube();
+        }
+
+        // Determine playerState from either onStateChange or infoDelivery
+        const state =
+          data?.event === "onStateChange" && typeof data?.info === "number"
+            ? data.info
+            : data?.event === "infoDelivery" &&
+              typeof data?.info?.playerState === "number"
+            ? data.info.playerState
+            : undefined;
+
+        if (state !== undefined) {
+          // YouTube PlayerState:
+          // -1: unstarted, 0: ended, 1: playing, 2: paused, 3: buffering, 5: cued
+          if (state === 1) {
+            // Video is ACTIVELY PLAYING frames! Fade in video, completely hide backdrop!
+            setIsPlaying(true);
+          } else if (state === 2) {
+            // Paused: IMMEDIATELY set isPlaying=false to hide iframe (so pause icon || NEVER appears)
+            setIsPlaying(false);
+            // Attempt to resume playback immediately
+            sendYouTubeCommand("playVideo");
+          } else if (state === 0) {
+            // Ended: hide iframe so no end screen/replay button appears
+            setIsPlaying(false);
             if (onEnded) {
               onEnded();
-            } else if (iframeRef.current?.contentWindow) {
-              // If no onEnded callback (e.g. detail page), replay seamlessly without playlist buttons
-              iframeRef.current.contentWindow.postMessage(
-                JSON.stringify({ event: "command", func: "playVideo", args: [] }),
-                "*",
-              );
+            } else {
+              sendYouTubeCommand("playVideo");
             }
-          } else if (data?.info === 2) {
-            // If YouTube is paused for any reason, immediately resume playback so the pause icon disappears
-            if (iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(
-                JSON.stringify({ event: "command", func: "playVideo", args: [] }),
-                "*",
-              );
-            }
+          } else if (state === 3 || state === -1) {
+            // Buffering or unstarted: keep iframe hidden so pause icon is invisible
+            setIsPlaying(false);
           }
+        }
+
+        // If YouTube encountered an error (e.g. 150 owner disabled embed), advance smoothly
+        if (data?.event === "onError") {
+          setIsPlaying(false);
+          onEnded?.();
         }
       } catch {
         // Ignore non-JSON postMessage from third-party scripts or extensions
@@ -140,10 +202,24 @@ export function TrailerBackground({
     return () => window.removeEventListener("message", handleMessage);
   }, [isActive, parsedTrailer, onEnded]);
 
+  // Fallback watchdog: If active trailer has not started playing within 8 seconds (e.g. blocked/error),
+  // call onEnded so Hero moves to next slide smoothly without getting stuck
+  useEffect(() => {
+    if (!isActive || !parsedTrailer || isPlaying) return;
+
+    const timeout = window.setTimeout(() => {
+      if (!isPlaying) {
+        onEnded?.();
+      }
+    }, 8000);
+
+    return () => window.clearTimeout(timeout);
+  }, [isActive, parsedTrailer, isPlaying, onEnded]);
+
   // Calculate exact scaled 16:9 dimensions:
-  // Scale factor (1.35x) crops ~17.5% from top and bottom, pushing YouTube title bar and watermark outside the container!
+  // Scale factor (1.4x) crops ~20% from top and bottom, pushing YouTube title bar, watermark, and edge UI completely outside the container!
   const videoStyle = useMemo(() => {
-    const scale = 1.35;
+    const scale = 1.4;
     const targetRatio = 16 / 9;
 
     if (!dims) {
@@ -155,7 +231,7 @@ export function TrailerBackground({
         height: "max(100%, 56.25vw)",
         minWidth: "140%",
         minHeight: "140%",
-        transform: "translate(-50%, -50%) scale(1.35)",
+        transform: "translate(-50%, -50%) scale(1.4)",
         pointerEvents: "none" as const,
       };
     }
@@ -215,34 +291,41 @@ export function TrailerBackground({
               loop={!onEnded}
               muted
               playsInline
-              onLoadedData={() => setIsVideoLoaded(true)}
-              onEnded={() => onEnded?.()}
+              onPlaying={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => {
+                setIsPlaying(false);
+                onEnded?.();
+              }}
               className={cn(
-                "absolute inset-0 size-full object-cover object-center pointer-events-none transition-opacity duration-1000",
-                isVideoLoaded ? "opacity-100" : "opacity-0",
+                "absolute inset-0 size-full object-cover object-center pointer-events-none transition-opacity duration-700 ease-in-out",
+                isPlaying ? "opacity-100" : "opacity-0",
               )}
             />
           ) : (
             <iframe
               ref={iframeRef}
               key={parsedTrailer.id}
-              // Notice: NO playlist parameter (which removes |<<, ||, >>| buttons), enablejsapi=1 enables ENDED detection
-              src={`https://www.youtube-nocookie.com/embed/${parsedTrailer.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&showinfo=0&vq=hd1080&enablejsapi=1&origin=${encodeURIComponent(origin)}`}
+              // Notice: Clean params, enablejsapi=1, mute=1 and autoplay=1 without playlist parameter
+              src={`https://www.youtube.com/embed/${parsedTrailer.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&enablejsapi=1&origin=${encodeURIComponent(origin)}`}
               title={`Trailer ${title}`}
-              allow="autoplay; encrypted-media; picture-in-picture"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               tabIndex={-1}
               onLoad={() => {
-                setTimeout(() => setIsVideoLoaded(true), 400);
+                kickstartYouTube();
+                setTimeout(kickstartYouTube, 200);
+                setTimeout(kickstartYouTube, 600);
+                setTimeout(kickstartYouTube, 1200);
               }}
               style={videoStyle}
               className={cn(
-                "pointer-events-none border-0 transition-opacity duration-1000 ease-in-out",
-                isVideoLoaded ? "opacity-100" : "opacity-0",
+                "pointer-events-none border-0 transition-opacity duration-700 ease-in-out select-none",
+                isPlaying ? "opacity-100" : "opacity-0 pointer-events-none",
               )}
             />
           )}
 
-          {/* Physical click & interaction shield over video to prevent YouTube clicks/pauses */}
+          {/* Absolute interaction blocker to guarantee zero clicks or gestures can reach video */}
           <div
             className="absolute inset-0 size-full z-10 select-none cursor-default"
             style={{ pointerEvents: "auto" }}
@@ -251,6 +334,10 @@ export function TrailerBackground({
               e.stopPropagation();
             }}
             onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onTouchStart={(e) => {
               e.preventDefault();
               e.stopPropagation();
             }}
