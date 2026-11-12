@@ -103,14 +103,14 @@ export function VideoPlayer({
       const saved = localStorage.getItem("phimhub_audio_boost");
       if (saved) {
         const num = Number(saved);
-        if (Number.isFinite(num) && num >= 1 && num <= 2.5) {
+        if (Number.isFinite(num) && num >= 1 && num <= 5.0) {
           return num;
         }
       }
     } catch {
       // Ignore
     }
-    return 1.8; // Mặc định tăng âm lên 1.8x (+5.1 dB) để âm lượng 100% to rõ mà không vỡ tiếng
+    return 3.0; // Mặc định tăng âm lên 300% (3.0x / +9.5 dB) siêu to rõ theo yêu cầu
   });
   const [isMuted, setIsMuted] = useState(false);
   const [canAdjustVolume, setCanAdjustVolume] = useState(true);
@@ -813,14 +813,14 @@ export function VideoPlayer({
       const gain = ctx.createGain();
       const compressor = ctx.createDynamicsCompressor();
 
-      // Soft limiter/compressor prevents loud peaks from clipping/distorting when sound is amplified
-      compressor.threshold.value = -6;
-      compressor.knee.value = 20;
-      compressor.ratio.value = 8;
+      // Soft limiter/compressor prevents loud peaks from clipping/distorting when sound is heavily amplified (up to 500%)
+      compressor.threshold.value = -8;
+      compressor.knee.value = 25;
+      compressor.ratio.value = 12;
       compressor.attack.value = 0.003;
       compressor.release.value = 0.25;
 
-      // Amplify the baseline audio stream (e.g. 1.8x / +5.1 dB)
+      // Amplify the baseline audio stream (default 300% / 3.0x / +9.5 dB)
       gain.gain.value = audioBoostFactor;
 
       source.connect(gain);
@@ -1516,7 +1516,7 @@ export function VideoPlayer({
                         </span>
                         <span className="flex items-center gap-1 text-white/60">
                           <span className={audioBoostFactor > 1 ? "text-primary font-bold" : ""}>
-                            {audioBoostFactor === 1.8 ? "To rõ (1.8x)" : audioBoostFactor === 1 ? "Chuẩn" : `${audioBoostFactor}x`}
+                            {audioBoostFactor === 3.0 ? "Siêu to (300%)" : `${Math.round(audioBoostFactor * 100)}%`}
                           </span>
                           <ChevronRight className="size-3.5" />
                         </span>
@@ -1636,11 +1636,11 @@ export function VideoPlayer({
                         Tăng âm lượng thực tế của phim to hơn mà thanh trượt vẫn ở mức 100% chuẩn, tự động chống rè/méo tiếng.
                       </p>
                       {[
-                        { val: 1.0, label: "Tiêu chuẩn (1.0x)" },
-                        { val: 1.4, label: "To vừa (+40%)" },
-                        { val: 1.8, label: "To rõ (+80% - Khuyên dùng)" },
-                        { val: 2.2, label: "Rất to (+120%)" },
-                        { val: 2.5, label: "Cực đại (+150% 🔥)" },
+                        { val: 1.0, label: "Tiêu chuẩn (100%)" },
+                        { val: 2.0, label: "To rõ (200% / 2x)" },
+                        { val: 3.0, label: "Siêu to (300% / 3x - Khuyên dùng 🔥)" },
+                        { val: 4.0, label: "Cực đại (400% / 4x 🚀)" },
+                        { val: 5.0, label: "Tối đa (500% / 5x ⚡)" },
                       ].map(({ val, label }) => (
                         <button
                           key={val}
