@@ -8,7 +8,7 @@ import {
   Share2,
   Tv,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { FranchiseSeasonsBar } from "@/components/FranchiseSeasonsBar";
@@ -45,8 +45,10 @@ export function MovieDetailPage() {
   const playerRef = useRef<HTMLDivElement>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
-  const [resumedFromHistory, setResumedFromHistory] = useState(false);
+  const [resumePrompt, setResumePrompt] = useState<{ currentTime: number; duration: number } | null>(null);
+  const [resumeAtTime, setResumeAtTime] = useState(0);
   const [preferEmbed, setPreferEmbed] = useState(false);
+  const lastProgressSaveRef = useRef({ episodeKey: "", currentTime: 0 });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,7 +57,8 @@ export function MovieDetailPage() {
     setError("");
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
-    setResumedFromHistory(false);
+    setResumePrompt(null);
+    setResumeAtTime(0);
     setPreferEmbed(false);
 
     getMovieDetails(id, controller.signal)
@@ -92,7 +95,19 @@ export function MovieDetailPage() {
             setCurrentEpisodeIndex(eIdx);
           }
         }
-        setResumedFromHistory(wasResumed);
+        const selectedEpisode = data.episodes?.[sIdx]?.items?.[eIdx];
+        const hasSavedTime =
+          progress &&
+          progress.serverIndex === sIdx &&
+          progress.episodeIndex === eIdx &&
+          (progress.currentTime ?? 0) > 10 &&
+          (progress.duration ?? 0) > (progress.currentTime ?? 0) + 15;
+        if (selectedEpisode && hasSavedTime) {
+          setResumePrompt({
+            currentTime: progress.currentTime!,
+            duration: progress.duration!,
+          });
+        }
 
         if (autoPlay || wasResumed) {
           setTimeout(() => {
@@ -109,12 +124,17 @@ export function MovieDetailPage() {
     return () => controller.abort();
   }, [id, autoPlay]);
 
-  // Auto-save watch progress whenever episode changes
-  useEffect(() => {
-    if (!movie || !movie.episodes || movie.episodes.length === 0) return;
-    const server = movie.episodes[currentServerIndex];
-    const episode = server?.items?.[currentEpisodeIndex];
-    if (!server || !episode) return;
+  const currentServer = movie?.episodes?.[currentServerIndex];
+  const currentEpisode = currentServer?.items?.[currentEpisodeIndex];
+
+  const handleProgressUpdate = useCallback((currentTime: number, duration: number) => {
+    if (!movie || !currentServer || !currentEpisode || currentTime < 5) return;
+
+    const episodeKey = `${movie.slug}:${currentServerIndex}:${currentEpisodeIndex}`;
+    if (lastProgressSaveRef.current.episodeKey !== episodeKey) {
+      lastProgressSaveRef.current = { episodeKey, currentTime: 0 };
+    }
+    if (currentTime - lastProgressSaveRef.current.currentTime < 5) return;
 
     saveProgress({
       movieId: movie.id,
@@ -122,15 +142,18 @@ export function MovieDetailPage() {
       title: movie.title,
       posterUrl: movie.posterUrl,
       backdropUrl: movie.backdropUrl,
-      serverName: server.server_name,
+      serverName: currentServer.server_name,
       serverIndex: currentServerIndex,
-      episodeName: episode.name,
-      episodeSlug: episode.slug,
+      episodeName: currentEpisode.name,
+      episodeSlug: currentEpisode.slug,
       episodeIndex: currentEpisodeIndex,
+      currentTime,
+      duration,
       quality: movie.quality,
       language: movie.language,
     });
-  }, [movie, currentServerIndex, currentEpisodeIndex]);
+    lastProgressSaveRef.current = { episodeKey, currentTime };
+  }, [movie, currentServer, currentEpisode, currentServerIndex, currentEpisodeIndex, saveProgress]);
 
   if (error) {
     return (
@@ -149,8 +172,6 @@ export function MovieDetailPage() {
   }
 
   const isSaved = savedMovies.some((item) => item.id === movie.id || item.slug === movie.slug);
-  const currentServer = movie.episodes?.[currentServerIndex];
-  const currentEpisode = currentServer?.items?.[currentEpisodeIndex];
   const hasEpisodes = Boolean(movie.episodes && movie.episodes.length > 0 && currentEpisode);
   const hasNextEpisode = Boolean(
     currentServer &&
@@ -160,8 +181,37 @@ export function MovieDetailPage() {
 
   function handleNextEpisode() {
     if (hasNextEpisode) {
-      setCurrentEpisodeIndex((prev) => prev + 1);
+      selectEpisode(currentServerIndex, currentEpisodeIndex + 1);
     }
+  }
+
+  function selectEpisode(serverIndex: number, episodeIndex: number) {
+    if (!movie) return;
+    const server = movie.episodes?.[serverIndex];
+    const episode = server?.items?.[episodeIndex];
+    if (!server || !episode) return;
+
+    saveProgress({
+      movieId: movie.id,
+      slug: movie.slug,
+      title: movie.title,
+      posterUrl: movie.posterUrl,
+      backdropUrl: movie.backdropUrl,
+      serverName: server.server_name,
+      serverIndex,
+      episodeName: episode.name,
+      episodeSlug: episode.slug,
+      episodeIndex,
+      currentTime: 0,
+      duration: 0,
+      quality: movie.quality,
+      language: movie.language,
+    });
+    lastProgressSaveRef.current = { episodeKey: `${movie.slug}:${serverIndex}:${episodeIndex}`, currentTime: 0 };
+    setCurrentServerIndex(serverIndex);
+    setCurrentEpisodeIndex(episodeIndex);
+    setResumePrompt(null);
+    setResumeAtTime(0);
   }
 
   function scrollToPlayer() {
@@ -347,8 +397,7 @@ export function MovieDetailPage() {
                     key={server.server_name}
                     type="button"
                     onClick={() => {
-                      setCurrentServerIndex(idx);
-                      setCurrentEpisodeIndex(0);
+                      selectEpisode(idx, 0);
                     }}
                     className={cn(
                       "rounded px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all active:scale-95",
@@ -364,39 +413,84 @@ export function MovieDetailPage() {
             )}
           </div>
 
-          {resumedFromHistory && currentEpisode && (
-            <div className="mb-3 flex items-center justify-between rounded-lg bg-primary/15 border border-primary/30 px-3.5 py-2 text-xs text-white">
-              <span className="flex items-center gap-2">
-                <History className="size-4 text-primary shrink-0" />
-                <span>
-                  Đang xem tiếp: <strong>{currentEpisode.name.toLowerCase().includes("tập") ? currentEpisode.name : `Tập ${currentEpisode.name}`}</strong> ({currentServer?.server_name}) từ tiến trình đã lưu.
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setResumedFromHistory(false)}
-                className="text-white/60 hover:text-white text-[11px]"
-              >
-                Đóng
-              </button>
-            </div>
-          )}
-
           {/* Native High-Performance Video Player (M3U8 with HLS.js + Embed Fallback) */}
           {hasEpisodes && currentEpisode ? (
             <div>
-              <VideoPlayer
-                key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}`}
-                m3u8Url={currentEpisode.m3u8}
-                embedUrl={currentEpisode.embed}
-                title={movie.title}
-                episodeName={currentEpisode.name}
-                poster={getBackdropUrl(movie)}
-                autoPlay={true}
-                hasNextEpisode={hasNextEpisode}
-                onNextEpisode={handleNextEpisode}
-                preferEmbed={preferEmbed}
-              />
+              <div className="relative">
+                <VideoPlayer
+                  key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${resumeAtTime}`}
+                  m3u8Url={currentEpisode.m3u8}
+                  embedUrl={currentEpisode.embed}
+                  title={movie.title}
+                  episodeName={currentEpisode.name}
+                  poster={getBackdropUrl(movie)}
+                  autoPlay={!resumePrompt}
+                  initialTime={resumeAtTime}
+                  hasNextEpisode={hasNextEpisode}
+                  onNextEpisode={handleNextEpisode}
+                  onTimeUpdate={handleProgressUpdate}
+                  preferEmbed={preferEmbed}
+                />
+                {resumePrompt && (
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="resume-dialog-title"
+                    className="absolute inset-0 z-40 grid place-items-center rounded-md bg-black/75 p-4 backdrop-blur-sm"
+                  >
+                    <div className="w-full max-w-sm rounded-xl border border-white/15 bg-[#181818] p-5 text-center text-white shadow-2xl">
+                      <History className="mx-auto mb-2 size-6 text-primary" />
+                      <h3 id="resume-dialog-title" className="text-sm font-semibold">Bạn đang xem dở</h3>
+                      <p className="mt-1 text-xs text-white/65">
+                        Đã xem đến {Math.floor(resumePrompt.currentTime / 60)}:
+                        {String(Math.floor(resumePrompt.currentTime % 60)).padStart(2, "0")}.
+                      </p>
+                      <div className="mt-4 flex justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResumeAtTime(resumePrompt.currentTime);
+                            setResumePrompt(null);
+                          }}
+                          className="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/80"
+                        >
+                          Xem tiếp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResumeAtTime(0);
+                            setResumePrompt(null);
+                            saveProgress({
+                              movieId: movie.id,
+                              slug: movie.slug,
+                              title: movie.title,
+                              posterUrl: movie.posterUrl,
+                              backdropUrl: movie.backdropUrl,
+                              serverName: currentServer?.server_name ?? "",
+                              serverIndex: currentServerIndex,
+                              episodeName: currentEpisode.name,
+                              episodeSlug: currentEpisode.slug,
+                              episodeIndex: currentEpisodeIndex,
+                              currentTime: 0,
+                              duration: resumePrompt.duration,
+                              quality: movie.quality,
+                              language: movie.language,
+                            });
+                            lastProgressSaveRef.current = {
+                              episodeKey: `${movie.slug}:${currentServerIndex}:${currentEpisodeIndex}`,
+                              currentTime: 0,
+                            };
+                          }}
+                          className="rounded-md bg-white/10 px-3 py-2 text-xs font-semibold text-white/85 hover:bg-white/20"
+                        >
+                          Xem từ đầu
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Real-time streaming source info with source switcher */}
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">
@@ -453,7 +547,7 @@ export function MovieDetailPage() {
                     <button
                       key={ep.slug || ep.name}
                       type="button"
-                      onClick={() => setCurrentEpisodeIndex(idx)}
+                      onClick={() => selectEpisode(currentServerIndex, idx)}
                       className={cn(
                         "min-w-10 sm:min-w-12 min-h-[38px] rounded px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all active:scale-95 inline-flex items-center justify-center",
                         isActive

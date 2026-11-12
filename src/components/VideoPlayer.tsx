@@ -55,6 +55,7 @@ export function VideoPlayer({
   hasNextEpisode = false,
   onNextEpisode,
   onTimeUpdate,
+  initialTime = 0,
   preferEmbed = false,
 }: {
   m3u8Url?: string;
@@ -66,12 +67,14 @@ export function VideoPlayer({
   hasNextEpisode?: boolean;
   onNextEpisode?: () => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  initialTime?: number;
   preferEmbed?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const initialSeekAppliedRef = useRef(false);
   const hideControlsTimerRef = useRef<number | null>(null);
   const seekOverlayTimerRef = useRef<number | null>(null);
 
@@ -136,6 +139,32 @@ export function VideoPlayer({
   const [hoverPosition, setHoverPosition] = useState<number>(0);
 
   const preferM3U8 = Boolean(m3u8Url && !useEmbedFallback);
+
+  const seekToInitialTime = useCallback((video: HTMLVideoElement) => {
+    if (initialTime <= 0 || initialSeekAppliedRef.current) return;
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const targetTime = duration > 0 ? Math.min(initialTime, Math.max(0, duration - 1)) : initialTime;
+    try {
+      video.currentTime = targetTime;
+      initialSeekAppliedRef.current = true;
+      setCurrentTime(targetTime);
+    } catch (error) {
+      console.warn("Could not resume video at the saved position:", error);
+    }
+  }, [initialTime]);
+
+  useEffect(() => {
+    if (initialTime <= 0) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.readyState >= 1) {
+      seekToInitialTime(video);
+      return;
+    }
+    const handleLoadedMetadata = () => seekToInitialTime(video);
+    video.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
+    return () => video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+  }, [initialTime, seekToInitialTime]);
 
   // Auto-hide controls timer
   const resetHideControlsTimer = useCallback(() => {
@@ -220,6 +249,7 @@ export function VideoPlayer({
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
         setIsLoading(false);
         setDuration(video.duration || 0);
+        seekToInitialTime(video);
 
         const sortedLevels = data.levels
           .map((level, index) => ({ index, height: level.height, bitrate: level.bitrate }))
@@ -328,6 +358,7 @@ export function VideoPlayer({
       const handleLoadedMeta = () => {
         setIsLoading(false);
         setDuration(video.duration || 0);
+        seekToInitialTime(video);
         if (autoPlay) {
           video.play().catch(() => {
             video.muted = true;
@@ -368,7 +399,7 @@ export function VideoPlayer({
       setError("Trình duyệt không hỗ trợ phát định dạng video này.");
       setIsLoading(false);
     }
-  }, [m3u8Url, preferM3U8, autoPlay, embedUrl]);
+  }, [m3u8Url, preferM3U8, autoPlay, embedUrl, seekToInitialTime]);
 
   // Video time, buffer, and countdown listeners
   useEffect(() => {
@@ -778,6 +809,9 @@ export function VideoPlayer({
         >
           <Smartphone className="size-4 rotate-90 text-primary" />
         </button>
+        <div className="absolute bottom-2 left-2 z-30 rounded-md bg-black/75 px-2.5 py-1.5 text-[10px] text-white/85 shadow backdrop-blur-sm">
+          Embed: chất lượng/tốc độ do nguồn quản lý. Lỗi phát? Thử máy chủ khác bên trên.
+        </div>
         <iframe
           key={embedUrl}
           src={embedUrl}
