@@ -84,7 +84,20 @@ export function VideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(() => {
+    try {
+      const saved = localStorage.getItem("phimhub_player_volume");
+      if (saved) {
+        const num = Number(saved);
+        if (Number.isFinite(num) && num >= 0 && num <= 2) {
+          return num;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    return 1;
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [canAdjustVolume, setCanAdjustVolume] = useState(true);
   const [isVolumeSliderOpen, setIsVolumeSliderOpen] = useState(false);
@@ -109,10 +122,15 @@ export function VideoPlayer({
   const [showUnlockButton, setShowUnlockButton] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio">("main");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio" | "audio">("main");
   const [seekFeedback, setSeekFeedback] = useState<string | null>(null);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+
+  // Web Audio Context & GainNode for Audio Amplification (up to 200%)
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const unlockButtonTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -738,11 +756,11 @@ export function VideoPlayer({
           break;
         case "arrowup":
           e.preventDefault();
-          changeVolume(Math.min(1, volume + 0.1));
+          changeVolume(Math.min(2, Math.round((volume + 0.1) * 10) / 10), true);
           break;
         case "arrowdown":
           e.preventDefault();
-          changeVolume(Math.max(0, volume - 0.1));
+          changeVolume(Math.max(0, Math.round((volume - 0.1) * 10) / 10), true);
           break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
@@ -757,10 +775,71 @@ export function VideoPlayer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation]);
 
+  // Web Audio Context & GainNode for Audio Amplification (up to 200%)
+  const initAudioGain = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return null;
+
+    if (gainNodeRef.current && audioCtxRef.current) {
+      if (audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      return gainNodeRef.current;
+    }
+
+    try {
+      if (typeof window === "undefined") return null;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return null;
+
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaElementSource(video);
+      const gain = ctx.createGain();
+      const compressor = ctx.createDynamicsCompressor();
+
+      // Soft limiter/compressor prevents loud peaks from clipping/distorting when boosted up to 200%
+      compressor.threshold.value = -4;
+      compressor.knee.value = 25;
+      compressor.ratio.value = 10;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+
+      source.connect(gain);
+      gain.connect(compressor);
+      compressor.connect(ctx.destination);
+
+      audioCtxRef.current = ctx;
+      gainNodeRef.current = gain;
+      sourceNodeRef.current = source;
+
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+
+      return gain;
+    } catch (err) {
+      console.warn("AudioContext boost initialization:", err);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        audioCtxRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
+
   // Actions
   function togglePlay() {
     const video = videoRef.current;
     if (!video) return;
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
+    }
     if (video.paused) {
       video.play().catch(() => {});
     } else {
@@ -797,18 +876,49 @@ export function VideoPlayer({
     setHoverPosition(pos * 100);
   }
 
-  function changeVolume(newVol: number) {
+  function changeVolume(newVol: number, showToast = false) {
     const video = videoRef.current;
     if (!video) return;
-    video.volume = newVol;
+
+    // Clamp between 0 and 2.0 (0% - 200%)
+    const clampedVol = Math.max(0, Math.min(2, Math.round(newVol * 100) / 100));
+
+    // HTML5 video element only supports 0.0 - 1.0. If clampedVol > 1, video.volume is 1.0 and Web Audio amplifies the rest!
+    const nativeVol = Math.min(1, clampedVol);
+    try {
+      video.volume = nativeVol;
+    } catch {
+      // Ignore read-only volume on iOS Safari
+    }
+
+    // Connect Web Audio GainNode for audio amplification
+    const gainNode = initAudioGain();
+    if (gainNode) {
+      if (audioCtxRef.current?.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      // gainNode boosts beyond 1.0 (e.g. 1.25x, 1.5x, 2.0x)
+      gainNode.gain.value = Math.max(1, clampedVol);
+    }
+
     const appliedVolume = video.volume;
-    const volumeWasApplied = Math.abs(appliedVolume - newVol) < 0.02;
+    const volumeWasApplied = Math.abs(appliedVolume - nativeVol) < 0.02 || Boolean(gainNode);
     setCanAdjustVolume(volumeWasApplied);
-    setVolume(volumeWasApplied ? newVol : appliedVolume);
-    if (!volumeWasApplied) return;
-    if (newVol > 0 && video.muted) {
+    setVolume(clampedVol);
+
+    try {
+      localStorage.setItem("phimhub_player_volume", String(clampedVol));
+    } catch {
+      // Ignore
+    }
+
+    if (clampedVol > 0 && video.muted) {
       video.muted = false;
       setIsMuted(false);
+    }
+
+    if (showToast) {
+      triggerToast(`Âm lượng: ${Math.round(clampedVol * 100)}%${clampedVol > 1 ? " (Khuếch đại 🔥)" : ""}`);
     }
   }
 
@@ -970,6 +1080,7 @@ export function VideoPlayer({
         playsInline
         webkit-playsinline="true"
         x5-playsinline="true"
+        crossOrigin="anonymous"
         poster={poster}
         onClick={handleVideoClick}
         onDoubleClick={() => {
@@ -1168,13 +1279,13 @@ export function VideoPlayer({
               <RotateCw className="size-3.5 sm:size-4" />
             </button>
 
-            {/* Volume Control with smooth custom slide-out track */}
+            {/* Volume Control with smooth custom slide-out track and Volume Boost up to 200% */}
             <div className="group/vol relative flex items-center">
               <button
                 type="button"
                 onClick={handleVolumeButtonClick}
                 className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
-                title={isTouchDevice ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh (M)"}
+                title={isTouchDevice ? "Điều chỉnh âm lượng & Khuếch đại" : "Bật/Tắt âm thanh (M)"}
                 aria-label={isTouchDevice ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh"}
                 aria-expanded={isVolumeSliderOpen}
                 aria-controls="mobile-volume-slider"
@@ -1183,53 +1294,85 @@ export function VideoPlayer({
                   <VolumeX className="size-4 sm:size-5 text-primary" />
                 ) : volume < 0.5 ? (
                   <Volume1 className="size-4 sm:size-5" />
-                ) : (
+                ) : volume <= 1 ? (
                   <Volume2 className="size-4 sm:size-5" />
+                ) : (
+                  <Volume2 className="size-4 sm:size-5 text-primary drop-shadow-[0_0_6px_rgba(229,9,20,0.6)]" />
                 )}
               </button>
 
-              {/* Desktop volume slider */}
+              {/* Desktop volume slider (Range 0 - 200%) */}
               <div
                 className={cn(
                   "h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out",
-                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-20 group-hover/vol:px-1.5",
+                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-32 group-hover/vol:px-1.5",
                 )}
               >
                 <input
                   type="range"
                   min="0"
-                  max="1"
-                  step="0.01"
+                  max="2"
+                  step="0.05"
                   value={isMuted ? 0 : volume}
                   onChange={(event) => changeVolume(Number(event.currentTarget.value))}
                   aria-label="Âm lượng video"
-                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%${volume > 1 ? " (Khuếch đại 🔥)" : ""}`}
                   className="h-4 w-full cursor-pointer accent-primary"
                   disabled={!canAdjustVolume}
                 />
+                {volume > 1 && !isMuted && (
+                  <span
+                    className="ml-1.5 text-[10px] font-extrabold text-primary select-none shrink-0"
+                    title="Đang khuếch đại âm lượng"
+                  >
+                    {Math.round(volume * 100)}%
+                  </span>
+                )}
               </div>
 
-              {/* Mobile volume popover */}
+              {/* Mobile volume popover with Boost Presets */}
               {isTouchDevice && isVolumeSliderOpen && (
                 <div
                   id="mobile-volume-slider"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-52 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl"
+                  className="absolute bottom-full left-1/2 z-50 mb-2 w-60 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs">
                     <span className="font-semibold text-white">Âm lượng</span>
-                    <span className="text-white/60">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                    <span className={cn("font-bold", volume > 1 ? "text-primary" : "text-white/60")}>
+                      {Math.round((isMuted ? 0 : volume) * 100)}% {volume > 1 && "(Khuếch đại 🔥)"}
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="0"
-                    max="1"
-                    step="0.01"
+                    max="2"
+                    step="0.05"
                     value={isMuted ? 0 : volume}
                     onChange={(event) => changeVolume(Number(event.currentTarget.value))}
                     aria-label="Âm lượng video"
                     className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!canAdjustVolume}
                   />
+
+                  {/* Quick Volume Boost Presets */}
+                  <div className="mt-2 mb-2 flex items-center gap-1.5">
+                    {[1.0, 1.25, 1.5, 2.0].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => changeVolume(v, true)}
+                        className={cn(
+                          "flex-1 py-1 rounded text-[11px] font-bold transition-all",
+                          volume === v
+                            ? "bg-primary text-white shadow-sm shadow-primary/40 scale-105"
+                            : "bg-white/10 text-white/80 hover:bg-white/20 active:scale-95",
+                        )}
+                      >
+                        {Math.round(v * 100)}%{v > 1 ? "🔥" : ""}
+                      </button>
+                    ))}
+                  </div>
+
                   {canAdjustVolume ? (
                     <button
                       type="button"
@@ -1337,6 +1480,24 @@ export function VideoPlayer({
                         </button>
                       )}
 
+                      {/* Audio Boost item */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveSettingsTab("audio")}
+                        className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Volume2 className="size-4 text-white/70" />
+                          <span>Khuếch đại âm lượng</span>
+                        </span>
+                        <span className="flex items-center gap-1 text-white/60">
+                          <span className={volume > 1 ? "text-primary font-bold" : ""}>
+                            {Math.round(volume * 100)}% {volume > 1 && "🔥"}
+                          </span>
+                          <ChevronRight className="size-3.5" />
+                        </span>
+                      </button>
+
                       {/* Ratio item */}
                       <button
                         type="button"
@@ -1433,6 +1594,46 @@ export function VideoPlayer({
                           Player không phát hiện thêm độ phân giải từ nguồn này.
                         </p>
                       )}
+                    </div>
+                  )}
+
+                  {/* Settings Audio Boost Subtab */}
+                  {activeSettingsTab === "audio" && (
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setActiveSettingsTab("main")}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
+                      >
+                        <ChevronRight className="size-3.5 rotate-180" />
+                        <span>Khuếch đại âm lượng</span>
+                      </button>
+                      <p className="px-3 py-1 text-[11px] leading-relaxed text-white/50">
+                        Khuếch đại âm thanh to hơn mức 100% tiêu chuẩn, tích hợp bộ chống rè và méo tiếng.
+                      </p>
+                      {[
+                        { val: 1.0, label: "100% (Mặc định)" },
+                        { val: 1.25, label: "125% (Tăng nhẹ +25%)" },
+                        { val: 1.5, label: "150% (To rõ +50%)" },
+                        { val: 1.75, label: "175% (Rất to +75%)" },
+                        { val: 2.0, label: "200% (Cực đại 2x 🔥)" },
+                      ].map(({ val, label }) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => {
+                            changeVolume(val, true);
+                            setIsSettingsOpen(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+                            volume === val ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
+                          )}
+                        >
+                          <span>{label}</span>
+                          {volume === val && <Check className="size-3.5" />}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
