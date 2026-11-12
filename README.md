@@ -5,7 +5,7 @@ Giao diện web khám phá và xem phim phong cách Netflix, được xây dựn
 Ứng dụng tích hợp trực tiếp với API của **phim.nguonc.com**:
 - **Không cần API key**: Dữ liệu công khai, cập nhật liên tục từ kho phim lớn.
 - **Xem phim trực tuyến**: Hỗ trợ player nhúng streaming, chọn server (Vietsub, Thuyết minh...) và danh sách tập phim đầy đủ.
-- **IMDb**: Có liên kết IMDb trên phim; điểm IMDb chỉ hiển thị khi metadata nguồn cung cấp, không tự tạo điểm cho phim thiếu dữ liệu.
+- **IMDb**: Có liên kết và điểm IMDb lấy từ Cinemeta; khi nguồn phim thiếu IMDb ID, ứng dụng tìm theo tên và năm rồi chỉ nhận kết quả khớp chính xác. Không cần API key; phim không xác minh được sẽ không hiển thị điểm.
 - **Khám phá phong phú**: Phim mới cập nhật, phim bộ, phim lẻ, phim hoạt hình / anime, tìm kiếm theo tên và lọc theo thể loại / quốc gia.
 - **Danh sách của tôi**: Lưu phim yêu thích ngay trên trình duyệt (localStorage).
 

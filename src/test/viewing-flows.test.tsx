@@ -1,11 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { WatchHistoryProvider, useWatchHistory } from "@/context/WatchHistoryContext";
 import { WatchlistProvider, useWatchlist } from "@/context/WatchlistContext";
 import type { Movie } from "@/data/movies";
 import { getImdbUrl, parseImdbRating } from "@/lib/imdb";
+import { getImdbMetadata } from "@/lib/imdbRating";
 import { mapNguonCMovie, mapPhimApiMovie } from "@/services/movieApi";
 
 const movie: Movie = {
@@ -18,6 +19,10 @@ const movie: Movie = {
   description: "Test",
   runtime: "90 phút",
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function WatchlistHarness() {
   const { movies, toggle, clear } = useWatchlist();
@@ -159,5 +164,50 @@ describe("IMDb metadata", () => {
     });
     expect(nguonCMovie.imdbUrl).toContain("tt7654321");
     expect(nguonCMovie.imdbRating).toBe(8.1);
+  });
+
+  it("loads an IMDb rating using an existing IMDb ID", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ meta: { imdbRating: "9.3" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getImdbMetadata({ ...movie, imdbId: "tt0111161" }),
+    ).resolves.toEqual({ imdbId: "tt0111161", rating: 9.3 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://v3-cinemeta.strem.io/meta/movie/tt0111161.json",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("matches Cinemeta search results by title and year before loading a rating", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          metas: [
+            { id: "tt1111111", name: "The Shawshank Redemption", releaseInfo: "1993" },
+            { id: "tt0111161", name: "The Shawshank Redemption", releaseInfo: "1994" },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ meta: { imdbRating: "9.3" } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getImdbMetadata({
+        ...movie,
+        title: "Nhà tù Shawshank",
+        originalTitle: "The Shawshank Redemption",
+        year: 1994,
+      }),
+    ).resolves.toEqual({ imdbId: "tt0111161", rating: 9.3 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
