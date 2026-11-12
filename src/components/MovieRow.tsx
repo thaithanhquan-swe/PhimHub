@@ -79,6 +79,9 @@ export function MovieRow({
 
   function scroll(direction: number) {
     if (!rowRef.current) return;
+    if (direction > 0 && visibleMovieCount < movies.length) {
+      setVisibleMovieCount((count) => Math.min(count + MOVIES_PER_BATCH * 2, movies.length));
+    }
     const scrollAmount = rowRef.current.clientWidth * 0.75;
     rowRef.current.style.scrollBehavior = "smooth";
     rowRef.current.scrollBy({
@@ -94,7 +97,7 @@ export function MovieRow({
     updateScrollButtons();
     if (
       visibleMovieCount < movies.length &&
-      el.scrollLeft + el.clientWidth >= el.scrollWidth - el.clientWidth
+      el.scrollLeft + el.clientWidth >= el.scrollWidth - el.clientWidth * 1.5
     ) {
       setVisibleMovieCount((count) => Math.min(count + MOVIES_PER_BATCH, movies.length));
     }

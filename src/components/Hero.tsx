@@ -311,7 +311,7 @@ export function Hero({
 
           {/* Desktop Quick-Select Preview Thumbnails */}
           <div className="hidden lg:flex items-center gap-2.5">
-            {list.slice(0, 5).map((m, idx) => {
+            {list.map((m, idx) => {
               const isActive = idx === currentIndex;
               return (
                 <button
