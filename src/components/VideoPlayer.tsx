@@ -105,7 +105,6 @@ export function VideoPlayer({
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
   const [isManualFullscreen, setIsManualFullscreen] = useState(false);
   const [isLandscapeView, setIsLandscapeView] = useState(false);
-  const [isForceLandscape, setIsForceLandscape] = useState(false);
   const [isScreenLocked, setIsScreenLocked] = useState(false);
   const [showUnlockButton, setShowUnlockButton] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -238,6 +237,7 @@ export function VideoPlayer({
 
   const handleToggleScreenOrientation = useCallback(async () => {
     const container = containerRef.current;
+    const video = videoRef.current;
     if (!container) return;
 
     const orientation = screen.orientation as
@@ -250,8 +250,9 @@ export function VideoPlayer({
     const isCurrentlyLandscape = Boolean(
       document.fullscreenElement ||
       (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
+      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen ||
+      isFullscreen ||
       isManualFullscreen ||
-      isForceLandscape ||
       isLandscapeView
     );
 
@@ -261,6 +262,11 @@ export function VideoPlayer({
         document.exitFullscreen().catch(() => {});
       } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
         (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      } else if (
+        video &&
+        typeof (video as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen === "function"
+      ) {
+        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
       }
 
       if (orientation?.unlock) {
@@ -278,8 +284,8 @@ export function VideoPlayer({
         }
       }
 
-      setIsForceLandscape(false);
       setIsManualFullscreen(false);
+      setIsFullscreen(false);
       setIsLandscapeView(false);
       triggerToast("Chế độ dọc");
       resetHideControlsTimer();
@@ -290,37 +296,62 @@ export function VideoPlayer({
     setIsLandscapeView(true);
     triggerToast("Xoay ngang màn hình");
 
-    let lockSucceeded = false;
+    // Case 1: iOS iPhone Safari - trigger native video fullscreen so the entire iPhone rotates to landscape!
+    const isIPhone = /iPhone|iPod/i.test(navigator.userAgent);
+    if (
+      isIPhone &&
+      video &&
+      typeof (video as unknown as { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen === "function"
+    ) {
+      try {
+        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+        setIsFullscreen(true);
+        resetHideControlsTimer();
+        return;
+      } catch (err) {
+        console.warn("webkitEnterFullscreen error:", err);
+      }
+    }
+
+    // Case 2: Standard Fullscreen API (Android Chrome, Desktop, iPad, etc.)
     if (container.requestFullscreen) {
       try {
         await container.requestFullscreen();
-      } catch {
-        // Fullscreen API may be blocked or unsupported on iOS Safari
+        setIsFullscreen(true);
+      } catch (err) {
+        console.warn("requestFullscreen error:", err);
       }
+    } else if ((container as unknown as { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen) {
+      try {
+        await (container as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen();
+        setIsFullscreen(true);
+      } catch (err) {
+        console.warn("webkitRequestFullscreen error:", err);
+      }
+    } else if (
+      video &&
+      typeof (video as unknown as { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen === "function"
+    ) {
+      try {
+        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+        setIsFullscreen(true);
+        resetHideControlsTimer();
+        return;
+      } catch {}
     }
 
+    // Lock orientation to landscape on devices that support Screen Orientation API (e.g. Android)
     if (orientation?.lock) {
       try {
         await orientation.lock("landscape");
-        lockSucceeded = true;
-      } catch {
-        // Ignore if unsupported or denied
+      } catch (err) {
+        console.warn("orientation.lock error:", err);
       }
     }
 
-    const isPhysicalLandscape = window.innerWidth > window.innerHeight;
-    if (isPhysicalLandscape || lockSucceeded) {
-      setIsForceLandscape(false);
-      setIsManualFullscreen(true);
-    } else {
-      // Device is in portrait and orientation lock couldn't rotate viewport (e.g. iOS Safari)
-      // Force 90deg CSS rotation for horizontal viewing
-      setIsForceLandscape(true);
-      setIsManualFullscreen(true);
-    }
-
+    setIsManualFullscreen(true);
     resetHideControlsTimer();
-  }, [isForceLandscape, isLandscapeView, isManualFullscreen, resetHideControlsTimer, triggerToast]);
+  }, [isFullscreen, isLandscapeView, isManualFullscreen, resetHideControlsTimer, triggerToast]);
 
   // Setup video source & HLS
   useEffect(() => {
@@ -617,7 +648,7 @@ export function VideoPlayer({
         (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
       );
       setIsFullscreen(isFs);
-      if (!isFs && !isForceLandscape) {
+      if (!isFs) {
         setIsLandscapeView(false);
         setIsManualFullscreen(false);
       }
@@ -630,18 +661,42 @@ export function VideoPlayer({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
     };
-  }, [isForceLandscape]);
+  }, []);
 
-  // Lock body scroll when in fullscreen or force landscape mode
+  // Track iOS native fullscreen events on <video>
   useEffect(() => {
-    if (isManualFullscreen || isForceLandscape || isFullscreen) {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleBeginFs = () => {
+      setIsFullscreen(true);
+      setIsLandscapeView(true);
+    };
+    const handleEndFs = () => {
+      setIsFullscreen(false);
+      setIsLandscapeView(false);
+      setIsManualFullscreen(false);
+    };
+
+    video.addEventListener("webkitbeginfullscreen", handleBeginFs);
+    video.addEventListener("webkitendfullscreen", handleEndFs);
+
+    return () => {
+      video.removeEventListener("webkitbeginfullscreen", handleBeginFs);
+      video.removeEventListener("webkitendfullscreen", handleEndFs);
+    };
+  }, []);
+
+  // Lock body scroll when in fullscreen mode
+  useEffect(() => {
+    if (isManualFullscreen || isFullscreen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
       return () => {
         document.body.style.overflow = originalOverflow;
       };
     }
-  }, [isManualFullscreen, isForceLandscape, isFullscreen]);
+  }, [isManualFullscreen, isFullscreen]);
 
   // Clean up timers on unmount
   useEffect(() => {
@@ -660,17 +715,11 @@ export function VideoPlayer({
         window.innerWidth > window.innerHeight &&
         (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches);
       setIsDeviceLandscape(isMobileLandscape);
-
-      // If physical orientation became landscape, clear force landscape
-      if (window.innerWidth > window.innerHeight) {
-        setIsForceLandscape(false);
-      }
     };
     const handleOrientationChange = () => {
       updateOrientation();
       if (window.innerWidth <= window.innerHeight && !isLandscapeView) {
         setIsManualFullscreen(false);
-        setIsForceLandscape(false);
       }
     };
 
@@ -762,18 +811,12 @@ export function VideoPlayer({
     resetHideControlsTimer();
   }
 
-  const isRotatedLandscape =
-    isForceLandscape &&
-    (typeof window !== "undefined" ? window.innerWidth < window.innerHeight : false);
-
   function handleTimelineScrub(e: React.MouseEvent<HTMLDivElement>) {
     if (isScreenLocked) return;
     const video = videoRef.current;
     if (!video || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = isRotatedLandscape
-      ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
-      : Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     video.currentTime = pos * duration;
     resetHideControlsTimer();
   }
@@ -782,9 +825,7 @@ export function VideoPlayer({
     if (isScreenLocked) return;
     if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = isRotatedLandscape
-      ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
-      : Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setHoverTime(pos * duration);
     setHoverPosition(pos * 100);
   }
@@ -858,9 +899,7 @@ export function VideoPlayer({
     const touch = e.touches[0];
     if (!touch) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = isRotatedLandscape
-      ? Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height))
-      : Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
     videoRef.current.currentTime = pos * duration;
     setCurrentTime(pos * duration);
     resetHideControlsTimer();
@@ -887,8 +926,7 @@ export function VideoPlayer({
         ref={containerRef}
         className={cn(
           "relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 group/embed",
-          isForceLandscape && "player-force-landscape",
-          !isForceLandscape && (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
+          (isDeviceLandscape || isManualFullscreen || isFullscreen) && "player-landscape-mode",
         )}
       >
         {m3u8Url && (
@@ -905,17 +943,17 @@ export function VideoPlayer({
           onClick={handleToggleScreenOrientation}
           className="absolute left-2 top-2 z-30 grid size-9 place-items-center rounded-full bg-black/70 text-white/90 backdrop-blur-sm hover:bg-black"
           title={
-            isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+            isLandscapeView || isFullscreen || isManualFullscreen
               ? "Chế độ dọc"
               : "Xoay ngang màn hình"
           }
           aria-label={
-            isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+            isLandscapeView || isFullscreen || isManualFullscreen
               ? "Chế độ dọc"
               : "Xoay ngang màn hình"
           }
         >
-          {isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape ? (
+          {isLandscapeView || isFullscreen || isManualFullscreen ? (
             <Minimize className="size-4" />
           ) : (
             <Maximize className="size-4" />
@@ -956,8 +994,7 @@ export function VideoPlayer({
       className={cn(
         "group relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 select-none",
         !showControls && isPlaying && "cursor-none",
-        isForceLandscape && "player-force-landscape",
-        !isForceLandscape && (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
+        (isDeviceLandscape || isManualFullscreen || isFullscreen) && "player-landscape-mode",
       )}
     >
       {/* Native HTML5 Video Player */}
@@ -1460,17 +1497,17 @@ export function VideoPlayer({
               onClick={handleToggleScreenOrientation}
               className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
               title={
-                isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+                isLandscapeView || isFullscreen || isManualFullscreen
                   ? "Chế độ dọc (F)"
                   : "Xoay ngang màn hình (F)"
               }
               aria-label={
-                isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+                isLandscapeView || isFullscreen || isManualFullscreen
                   ? "Chế độ dọc"
                   : "Xoay ngang màn hình"
               }
             >
-              {isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape ? (
+              {isLandscapeView || isFullscreen || isManualFullscreen ? (
                 <Minimize className="size-4 sm:size-5" />
               ) : (
                 <Maximize className="size-4 sm:size-5" />
