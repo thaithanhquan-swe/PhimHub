@@ -140,19 +140,15 @@ export function MovieCard({ movie }: { movie: Movie }) {
           href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Xem điểm IMDb của ${movie.title}`}
-          title="Điểm lấy từ Cinemeta; mở trang IMDb"
+          aria-label={`Tra cứu ${movie.title} trên IMDb`}
+          title="Mở trang IMDb"
           className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
         >
           <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
           <span>
             {imdb.rating !== undefined
               ? `${imdb.rating.toFixed(1)}/10`
-              : imdb.status === "loading"
-                ? "Đang tải điểm"
-                : imdb.status === "error"
-                  ? "Lỗi tải điểm"
-                  : "Chưa có điểm"}
+              : movie.kind}
           </span>
           <span aria-hidden="true">↗</span>
         </a>
