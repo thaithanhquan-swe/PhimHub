@@ -9,8 +9,9 @@ type WatchProgressPayload = {
   totalDuration: number;
 };
 
-function getTelemetryUrl(path: string): string {
-  const baseUrl = import.meta.env.VITE_BACKEND_API_BASE?.replace(/\/+$/, "") ?? "";
+function getTelemetryUrl(path: string): string | null {
+  const baseUrl = import.meta.env.VITE_BACKEND_API_BASE?.replace(/\/+$/, "");
+  if (!baseUrl) return null;
   return `${baseUrl}/api/telemetry/${path}`;
 }
 
@@ -25,8 +26,11 @@ export function useSyncWatchProgress(movieId: string, movieTitle: string) {
 
   const sendProgress = useCallback(
     async (progress: number, totalDuration: number) => {
+      const url = getTelemetryUrl("watch-progress");
+      if (!url) return;
+
       try {
-        const response = await fetch(getTelemetryUrl("watch-progress"), {
+        const response = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -45,7 +49,9 @@ export function useSyncWatchProgress(movieId: string, movieTitle: string) {
 
         setError(null);
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Không thể đồng bộ tiến trình xem.");
+        const message = reason instanceof Error ? reason.message : "Không thể đồng bộ tiến trình xem.";
+        console.warn("Watch progress telemetry skipped:", message);
+        setError(null);
       }
     },
     [movieId, movieTitle],
