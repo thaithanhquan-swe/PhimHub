@@ -70,6 +70,7 @@ export function VideoPlayer({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const hideControlsTimerRef = useRef<number | null>(null);
   const seekOverlayTimerRef = useRef<number | null>(null);
@@ -108,6 +109,27 @@ export function VideoPlayer({
   useEffect(() => {
     setUseEmbedFallback(preferEmbed);
   }, [preferEmbed]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !settingsRef.current?.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSettingsOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSettingsOpen]);
 
   // Timeline hover state
   const [hoverTime, setHoverTime] = useState<number | null>(null);
@@ -1052,7 +1074,7 @@ export function VideoPlayer({
             )}
 
             {/* Settings Button */}
-            <div className="relative">
+            <div ref={settingsRef} className="relative">
               <button
                 type="button"
                 onClick={() => {
