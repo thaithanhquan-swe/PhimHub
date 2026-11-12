@@ -136,22 +136,24 @@ export function MovieCard({ movie }: { movie: Movie }) {
             </>
           )}
         </div>
-        <a
-          href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Tra cứu ${movie.title} trên IMDb`}
-          title="Mở trang IMDb"
-          className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
-        >
-          <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
-          <span>
-            {imdb.rating !== undefined
-              ? `${imdb.rating.toFixed(1)}/10`
-              : movie.kind}
+        {imdb.rating !== undefined ? (
+          <a
+            href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Xem điểm IMDb của ${movie.title}`}
+            title="Mở trang IMDb"
+            className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
+          >
+            <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
+            <span>{imdb.rating.toFixed(1)}/10</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        ) : (
+          <span className="mt-1 w-fit text-[10px] font-semibold text-white/60 sm:text-[11px]">
+            {movie.kind}
           </span>
-          <span aria-hidden="true">↗</span>
-        </a>
+        )}
       </div>
     </article>
   );

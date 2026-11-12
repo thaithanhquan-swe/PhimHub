@@ -223,6 +223,21 @@ describe("IMDb metadata", () => {
     );
 
     expect(screen.getByText("Phim lẻ")).toBeTruthy();
+    expect(screen.queryByText("IMDb")).toBeNull();
     expect(screen.queryByText("Chưa có điểm")).toBeNull();
+  });
+
+  it("shows IMDb and the score together when a rating is available", () => {
+    render(
+      <MemoryRouter>
+        <WatchlistProvider>
+          <MovieCard movie={{ ...movie, imdbId: "tt0111161", imdbRating: 9.3 }} />
+        </WatchlistProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("IMDb")).toBeTruthy();
+    expect(screen.getByText("9.3/10")).toBeTruthy();
+    expect(screen.queryByText("Phim lẻ")).toBeNull();
   });
 });
