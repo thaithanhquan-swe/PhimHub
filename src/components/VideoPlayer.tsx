@@ -43,6 +43,8 @@ type QualityOption = {
   height?: number;
 };
 
+const AUTO_QUALITY: QualityOption = { index: -1, label: "Tự động (Auto)" };
+
 export function VideoPlayer({
   m3u8Url,
   embedUrl,
@@ -83,7 +85,7 @@ export function VideoPlayer({
   const [isVolumeSliderOpen, setIsVolumeSliderOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [aspectRatio, setAspectRatio] = useState<"contain" | "cover">("contain");
-  const [qualities, setQualities] = useState<QualityOption[]>([{ index: -1, label: "Tự động (Auto)" }]);
+  const [qualities, setQualities] = useState<QualityOption[]>([AUTO_QUALITY]);
   const [currentQualityIndex, setCurrentQualityIndex] = useState(-1);
   const [isTouchDevice] = useState(
     () => navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches,
@@ -142,6 +144,8 @@ export function VideoPlayer({
     setError(null);
     setIsLoading(true);
     setMutedAutoplayNotice(false);
+    setQualities([AUTO_QUALITY]);
+    setCurrentQualityIndex(-1);
 
     if (!preferM3U8 || !m3u8Url) {
       setIsLoading(false);
@@ -184,6 +188,7 @@ export function VideoPlayer({
         levelLoadingMaxRetry: 3,
         fragLoadingTimeOut: 12000,
         fragLoadingMaxRetry: 3,
+        startLevel: -1,
       });
 
       hlsRef.current = hls;
@@ -194,18 +199,26 @@ export function VideoPlayer({
         setIsLoading(false);
         setDuration(video.duration || 0);
 
-        // Parse available quality levels
-        if (data.levels && data.levels.length > 0) {
-          const parsedQualities: QualityOption[] = [
-            { index: -1, label: "Tự động (Auto)" },
-            ...data.levels.map((lvl, idx) => ({
-              index: idx,
-              label: lvl.height ? `${lvl.height}p ${lvl.height >= 1080 ? "FHD" : lvl.height >= 720 ? "HD" : ""}` : `Chất lượng ${idx + 1}`,
-              height: lvl.height,
-            })),
-          ];
-          setQualities(parsedQualities);
-        }
+        const sortedLevels = data.levels
+          .map((level, index) => ({ index, height: level.height, bitrate: level.bitrate }))
+          .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || b.bitrate - a.bitrate);
+        const seenHeights = new Set<number>();
+        const availableQualities = sortedLevels
+          .filter(({ height }) => {
+            if (!height) return true;
+            if (seenHeights.has(height)) return false;
+            seenHeights.add(height);
+            return true;
+          })
+          .map(({ index, height }) => ({
+            index,
+            label: height
+              ? `${height}p${height >= 1080 ? " FHD" : height >= 720 ? " HD" : ""}`
+              : `Chất lượng ${index + 1}`,
+            height,
+          }));
+
+        setQualities(availableQualities.length > 1 ? [AUTO_QUALITY, ...availableQualities] : [AUTO_QUALITY]);
 
         if (autoPlay) {
           const playPromise = video.play();
@@ -1094,7 +1107,9 @@ export function VideoPlayer({
                           </span>
                           <span className="flex items-center gap-1 text-white/60">
                             <span>
-                              {qualities.find((q) => q.index === currentQualityIndex)?.label.split(" ")[0] || "Tự động"}
+                              {currentQualityIndex === -1
+                                ? "Auto"
+                                : qualities.find((q) => q.index === currentQualityIndex)?.label}
                             </span>
                             <ChevronRight className="size-3.5" />
                           </span>
