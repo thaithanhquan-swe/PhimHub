@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { WatchHistoryProvider } from "@/context/WatchHistoryContext";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const HomePage = lazy(() => import("@/pages/HomePage").then(({ HomePage }) => ({ default: HomePage })));
 const MovieDetailPage = lazy(() =>
@@ -35,17 +36,7 @@ function AppRoutes() {
           <Route path="/movie/:id" element={<MovieDetailPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/search" element={<SearchPage />} />
-          <Route
-            path="*"
-            element={
-              <main className="grid min-h-screen place-items-center pt-16">
-                <div className="text-center">
-                  <p className="text-6xl font-bold text-primary">404</p>
-                  <p className="mt-3 text-white/70">Không tìm thấy trang này.</p>
-                </div>
-              </main>
-            }
-          />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
       <footer className="border-t border-white/10 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-6 text-center text-[11px] text-white/45 sm:px-[4.5%]">
