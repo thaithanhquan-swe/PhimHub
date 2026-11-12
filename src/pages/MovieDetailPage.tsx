@@ -21,6 +21,7 @@ import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
 import { useImdbRating } from "@/hooks/useImdbRating";
+import { useSyncWatchProgress } from "@/hooks/useSyncWatchProgress";
 import { getImdbUrl } from "@/lib/imdb";
 import { cn } from "@/lib/utils";
 import {
@@ -52,14 +53,18 @@ export function MovieDetailPage() {
   getProgressRef.current = getProgress;
   const [resumePrompt, setResumePrompt] = useState<{ currentTime: number; duration: number } | null>(null);
   const [resumeAtTime, setResumeAtTime] = useState(0);
-  const [preferEmbed, setPreferEmbed] = useState(false);
-  const lastProgressSaveRef = useRef({ episodeKey: "", currentTime: 0 });
   const movieQuery = useQuery({
     queryKey: ["movie-details", id],
     queryFn: ({ signal }) => getMovieDetails(id, signal),
     enabled: Boolean(id),
   });
   const movie = movieQuery.data ?? null;
+  const { onTimeUpdate: syncWatchProgress, error: watchSyncError } = useSyncWatchProgress(
+    movie?.id ?? "",
+    movie?.title ?? "",
+  );
+  const [preferEmbed, setPreferEmbed] = useState(false);
+  const lastProgressSaveRef = useRef({ episodeKey: "", currentTime: 0 });
   const franchiseQuery = useQuery({
     queryKey: ["franchise-parts", movie?.slug],
     queryFn: ({ signal }) => {
@@ -148,6 +153,7 @@ export function MovieDetailPage() {
   const currentEpisode = currentServer?.items?.[currentEpisodeIndex];
 
   const handleProgressUpdate = useCallback((currentTime: number, duration: number) => {
+    syncWatchProgress(currentTime, duration);
     if (!movie || !currentServer || !currentEpisode || currentTime < 5) return;
 
     const episodeKey = `${movie.slug}:${currentServerIndex}:${currentEpisodeIndex}`;
@@ -173,7 +179,7 @@ export function MovieDetailPage() {
       language: movie.language,
     });
     lastProgressSaveRef.current = { episodeKey, currentTime };
-  }, [movie, currentServer, currentEpisode, currentServerIndex, currentEpisodeIndex, saveProgress]);
+  }, [movie, currentServer, currentEpisode, currentServerIndex, currentEpisodeIndex, saveProgress, syncWatchProgress]);
 
   if (movieQuery.error && !movie) {
     return (
@@ -535,6 +541,11 @@ export function MovieDetailPage() {
                   </div>
                 )}
               </div>
+              {watchSyncError && (
+                <p className="mt-2 text-xs text-amber-300" role="status">
+                  Không thể đồng bộ tiến trình xem: {watchSyncError}
+                </p>
+              )}
 
               {/* Real-time streaming source info with source switcher */}
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">

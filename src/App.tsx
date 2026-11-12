@@ -15,6 +15,7 @@ const SchedulePage = lazy(() =>
   import("@/pages/SchedulePage").then(({ SchedulePage }) => ({ default: SchedulePage })),
 );
 const SearchPage = lazy(() => import("@/pages/SearchPage").then(({ SearchPage }) => ({ default: SearchPage })));
+const AdminPage = lazy(() => import("@/pages/AdminPage").then(({ AdminPage }) => ({ default: AdminPage })));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -36,6 +37,7 @@ function AppRoutes() {
           <Route path="/movie/:id" element={<MovieDetailPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
