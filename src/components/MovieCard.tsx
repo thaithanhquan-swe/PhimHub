@@ -20,6 +20,18 @@ export function MovieCard({ movie }: { movie: Movie }) {
       ? movie.currentEpisode
       : null;
 
+  const previewDescription =
+    movie.description && !movie.description.includes("Chưa có mô tả")
+      ? movie.description
+      : [
+          movie.originalTitle && movie.originalTitle !== movie.title ? movie.originalTitle : "",
+          movie.genre,
+          movie.year ? `Năm ${movie.year}` : "",
+          displayEpisode ? `Tình trạng: ${displayEpisode}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ") || `${movie.title} - Xem chi tiết trên PhimHub.`;
+
   return (
     <article className="movie-card group relative flex flex-col select-none">
       {/* Poster Container */}
@@ -64,7 +76,7 @@ export function MovieCard({ movie }: { movie: Movie }) {
           </div>
           <div className="absolute inset-x-0 bottom-0 translate-y-1 bg-gradient-to-t from-black via-black/90 to-transparent px-2.5 pb-2.5 pt-8 opacity-0 transition-all duration-200 group-hover/poster:translate-y-0 group-hover/poster:opacity-100 group-focus-within/poster:translate-y-0 group-focus-within/poster:opacity-100">
             <p className="line-clamp-3 text-left text-[10px] leading-4 text-white/85 sm:text-xs">
-              {movie.description}
+              {previewDescription}
             </p>
             <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-white">
               <Play className="size-3 fill-current text-primary" /> Xem chi tiết

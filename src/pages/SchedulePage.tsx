@@ -275,7 +275,15 @@ export function SchedulePage() {
                     )}
 
                     <p className="mt-2 text-xs text-white/70 line-clamp-2 leading-relaxed">
-                      {movie.description}
+                      {movie.description && !movie.description.includes("Chưa có mô tả")
+                        ? movie.description
+                        : [
+                            movie.originalTitle && movie.originalTitle !== movie.title ? movie.originalTitle : "",
+                            movie.genre,
+                            movie.currentEpisode ? `Tình trạng: ${movie.currentEpisode}` : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || `${movie.title} - Lịch chiếu trên PhimHub.`}
                     </p>
                   </div>
 
