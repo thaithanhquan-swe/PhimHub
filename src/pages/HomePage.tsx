@@ -173,7 +173,7 @@ export function HomePage() {
                     clearSavedMovies();
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 transition-colors hover:border-lime-400/50 hover:bg-lime-500/10 hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-white"
               >
                 <Trash2 className="size-3.5" />
                 Xóa tất cả

@@ -447,7 +447,7 @@ export function Navbar() {
               to={to}
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 py-1 min-h-[44px] text-[10px] font-medium transition-all active:scale-95 select-none",
-                active ? "text-[#a3e635] font-bold" : "text-white/70 hover:text-white",
+                active ? "text-[#ff5964] font-bold" : "text-white/70 hover:text-white",
               )}
             >
               <Icon className="size-4.5 shrink-0" />
