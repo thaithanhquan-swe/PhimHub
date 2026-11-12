@@ -40,7 +40,7 @@ export function SearchPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isHoveringDropdown, setIsHoveringDropdown] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const { syncSearch, error: telemetryError } = useSyncSearch();
+  const { syncSearch } = useSyncSearch();
 
   // Đóng dropdown khi click ra ngoài vùng search
   useEffect(() => {
@@ -254,11 +254,6 @@ export function SearchPage() {
           message={error instanceof Error ? error.message : "Có lỗi khi tìm phim."}
           onRetry={() => void resultsQuery.refetch()}
         />
-      )}
-      {telemetryError && (
-        <p className="mb-4 text-center text-xs text-amber-300" role="status">
-          Không thể đồng bộ lịch sử tìm kiếm: {telemetryError}
-        </p>
       )}
 
       {!loading && !error && debouncedQuery && results.length === 0 && (
