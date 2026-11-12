@@ -33,19 +33,30 @@ export function Hero({
   const { movies: savedMovies, toggle } = useWatchlist();
   const currentMovie = list[currentIndex] || list[0] || null;
   const { trailerId } = useImdbRating(currentMovie, true, true);
+  const currentTrailer = currentMovie?.trailerUrl || trailerId;
 
-  // Continuous auto-play loop (every 5 seconds, light and steady)
+  // Auto-advance loop:
+  // If current movie has a trailer, let the trailer play completely before moving to next slide!
+  // If no trailer, transition smoothly after 6 seconds.
   useEffect(() => {
     if (list.length <= 1 || isPaused) return;
 
+    if (currentTrailer) {
+      // Fallback timer (90s) in case video ended event is delayed
+      const timer = window.setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % list.length);
+      }, 90000);
+      return () => window.clearTimeout(timer);
+    }
+
     const interval = window.setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % list.length);
-    }, 5200);
+    }, 6000);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [list.length, isPaused]);
+  }, [list.length, isPaused, currentTrailer, currentIndex]);
 
   if (!currentMovie) return null;
 
@@ -132,6 +143,9 @@ export function Hero({
                   title={m.title}
                   priority={isActive ? "high" : "auto"}
                   isActive={isActive}
+                  onEnded={() => {
+                    handleNext();
+                  }}
                 />
               )}
             </div>

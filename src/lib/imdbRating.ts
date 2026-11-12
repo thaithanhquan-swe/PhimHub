@@ -45,14 +45,16 @@ function normalizeTitle(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function matchesMovie(meta: CinemetaMeta, movie: Movie): boolean {
+function matchesMovie(meta: CinemetaMeta, movie: Movie, strictYear = true): boolean {
   const sourceTitles = [movie.originalTitle, movie.title]
     .filter((title): title is string => Boolean(title))
     .map(normalizeTitle);
   const candidateTitle = normalizeTitle(meta.name ?? "");
   const candidateYear = getYear(meta.releaseInfo) ?? getYear(meta.year);
 
-  return sourceTitles.includes(candidateTitle) && candidateYear === movie.year;
+  if (!sourceTitles.includes(candidateTitle)) return false;
+  if (strictYear) return candidateYear === movie.year;
+  return !candidateYear || Math.abs(candidateYear - movie.year) <= 3;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -79,12 +81,23 @@ async function fetchMetadata(movie: Movie): Promise<ImdbMetadata | null> {
       ...new Set([movie.originalTitle, movie.title].filter((title): title is string => Boolean(title))),
     ];
     for (const title of titles) {
+      // 1. Search with title and year for strict match
       const query = [title, movie.year].join(" ");
       const catalogUrl =
         `${CINEMETA_BASE_URL}/catalog/${type}/top/` +
         `search=${encodeURIComponent(query)}.json`;
-      const catalog = await fetchJson<{ metas?: CinemetaMeta[] }>(catalogUrl);
-      const match = catalog.metas?.find((meta) => matchesMovie(meta, movie));
+      let catalog = await fetchJson<{ metas?: CinemetaMeta[] }>(catalogUrl).catch(() => ({ metas: [] }));
+      let match = catalog.metas?.find((meta) => matchesMovie(meta, movie, true));
+
+      // 2. Fallback to title search if year differs slightly (e.g. upload year vs theatrical release)
+      if (!match) {
+        const titleOnlyUrl =
+          `${CINEMETA_BASE_URL}/catalog/${type}/top/` +
+          `search=${encodeURIComponent(title)}.json`;
+        catalog = await fetchJson<{ metas?: CinemetaMeta[] }>(titleOnlyUrl).catch(() => ({ metas: [] }));
+        match = catalog.metas?.find((meta) => matchesMovie(meta, movie, false));
+      }
+
       imdbId = match?.imdb_id || match?.id;
       if (imdbId) break;
     }
@@ -96,9 +109,15 @@ async function fetchMetadata(movie: Movie): Promise<ImdbMetadata | null> {
     `${CINEMETA_BASE_URL}/meta/${type}/${imdbId}.json`,
   );
   const rating = parseImdbRating(metadata.meta?.imdbRating);
-  const trailerId = metadata.meta?.trailers
-    ?.find((trailer) => trailer.type?.toLowerCase() === "trailer" && /^[\w-]{11}$/.test(trailer.source ?? ""))
-    ?.source;
+  const rawTrailers = metadata.meta?.trailers ?? [];
+  const trailerFromList = rawTrailers.find((t) => t.source && /^[\w-]{11}$/.test(t.source))?.source;
+  const rawSingleTrailer = (metadata.meta as { trailer?: string })?.trailer;
+  const singleTrailerId =
+    rawSingleTrailer && /^[\w-]{11}$/.test(rawSingleTrailer)
+      ? rawSingleTrailer
+      : rawSingleTrailer?.match(/(?:youtu\.be\/|v=)([\w-]{11})/)?.[1];
+  const trailerId = trailerFromList || singleTrailerId;
+
   return {
     imdbId,
     ...(rating !== undefined ? { rating } : {}),
