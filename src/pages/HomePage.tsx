@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -32,7 +33,7 @@ export function HomePage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { movies: savedMovies } = useWatchlist();
+  const { movies: savedMovies, clear: clearSavedMovies } = useWatchlist();
 
   const typeParam = searchParams.get("type"); // "tv" | "movie" | "hoat-hinh" | null
   const genreParam = searchParams.get("genre") || "all";
@@ -168,9 +169,25 @@ export function HomePage() {
       {/* Saved Movies View */}
       {savedOnly && (
         <div className="px-4 pt-28 sm:px-[4.5%]">
-          <h1 className="font-display text-2xl font-bold sm:text-3xl text-white">
-            Danh sách phim đã lưu
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-display text-2xl font-bold sm:text-3xl text-white">
+              Danh sách phim đã lưu ({savedMovies.length})
+            </h1>
+            {savedMovies.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Bạn có chắc muốn xóa toàn bộ danh sách phim đã lưu?")) {
+                    clearSavedMovies();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-white"
+              >
+                <Trash2 className="size-3.5" />
+                Xóa tất cả
+              </button>
+            )}
+          </div>
           {savedMovies.length === 0 ? (
             <p className="mt-4 text-sm text-white/60">
               Bạn chưa lưu bộ phim nào. Hãy bấm biểu tượng lưu trên các phim bạn yêu thích!

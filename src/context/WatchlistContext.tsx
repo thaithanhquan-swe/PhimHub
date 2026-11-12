@@ -8,6 +8,7 @@ const STORAGE_KEY = "phimhub-watchlist-v2";
 type WatchlistContextValue = {
   movies: Movie[];
   toggle: (movie: Movie) => void;
+  clear: () => void;
 };
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
@@ -46,7 +47,16 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const value = useMemo(() => ({ movies, toggle }), [movies]);
+  function clear() {
+    try {
+      localStorage.setItem(STORAGE_KEY, "[]");
+      setMovies([]);
+    } catch (error) {
+      console.warn("Không thể xóa danh sách phim đã lưu:", error);
+    }
+  }
+
+  const value = useMemo(() => ({ movies, toggle, clear }), [movies]);
   return (
     <WatchlistContext.Provider value={value}>
       {children}
