@@ -36,7 +36,7 @@
   --card-foreground: #f3f2f5;
   --popover: #18181b;
   --popover-foreground: #f3f2f5;
-  --primary: #84cc16;
+  --primary: #e50914;
   --primary-foreground: #ffffff;
   --secondary: #222225;
   --secondary-foreground: #f3f2f5;
@@ -47,7 +47,7 @@
   --destructive: #ef4444;
   --border: rgb(255 255 255 / 9%);
   --input: rgb(255 255 255 / 12%);
-  --ring: #84cc16;
+  --ring: #e50914;
 }
 
 * {
@@ -78,7 +78,7 @@ a {
 }
 
 ::selection {
-  background: rgb(132 204 22 / 35%);
+  background: rgb(229 9 20 / 35%);
   color: white;
 }
 
