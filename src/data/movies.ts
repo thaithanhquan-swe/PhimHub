@@ -5,6 +5,9 @@ export type Movie = {
   originalTitle?: string;
   year: number;
   rating?: string;
+  imdbId?: string;
+  imdbUrl?: string;
+  imdbRating?: number;
   genre: string;
   kind: "Phim lẻ" | "Series" | "Tài liệu";
   badge?: string;
@@ -42,7 +45,6 @@ export type MovieDetails = Movie & {
   episodes: EpisodeServer[];
   recommendations: Movie[];
   tmdbUrl?: string | null;
-  imdbUrl?: string | null;
 };
 
 export const genres = [

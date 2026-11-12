@@ -274,6 +274,12 @@ type PhimApiItem = {
   category?: { id: string; name: string; slug: string }[];
   country?: { id: string; name: string; slug: string }[];
   status?: string;
+  imdb?: string | {
+    id?: string | null;
+    url?: string | null;
+    rating?: string | number | null;
+  };
+  imdb_rating?: string | number | null;
 };
 
 type PhimApiListResponse = {
@@ -345,7 +351,11 @@ type NguonCMovieItem = {
     }
   >;
   tmdb?: { id: number | null; type: string | null; season: number | null; url: string | null };
-  imdb?: { id: string | null; url: string | null };
+  imdb?: {
+    id: string | null;
+    url: string | null;
+    rating?: string | number | null;
+  };
 };
 
 type NguonCListResponse = {
@@ -388,6 +398,11 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
   const casts = Array.isArray(item.actor)
     ? item.actor.filter((a) => a && a !== "Đang cập nhật").join(", ")
     : item.actor;
+  const imdbId = typeof item.imdb === "string" ? item.imdb : item.imdb?.id || undefined;
+  const imdbUrl = typeof item.imdb === "object" ? item.imdb?.url || undefined : undefined;
+  const imdbRating = parseImdbRating(
+    item.imdb_rating ?? (typeof item.imdb === "object" ? item.imdb?.rating : undefined),
+  );
 
   return {
     id: item.slug,
@@ -410,6 +425,9 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
     totalEpisodes: isSeries ? 0 : 1,
     director: director || undefined,
     casts: casts || undefined,
+    imdbId,
+    imdbUrl,
+    imdbRating,
   };
 }
 
@@ -445,6 +463,7 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
   const yearNum = typeof item.year === "string" ? parseInt(item.year, 10) : item.year;
   const quality = item.quality || "HD";
   const language = item.language || "Vietsub";
+  const imdbRating = parseImdbRating(item.imdb?.rating);
 
   return {
     id: item.slug,
@@ -467,6 +486,9 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
     totalEpisodes: totalEp,
     director: item.director || undefined,
     casts: item.casts || undefined,
+    imdbId: item.imdb?.id || undefined,
+    imdbUrl: item.imdb?.url || undefined,
+    imdbRating,
   };
 }
 

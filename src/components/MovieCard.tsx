@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getPosterUrl, type Movie } from "@/data/movies";
+import { getImdbUrl } from "@/lib/imdb";
 
 export function MovieCard({ movie }: { movie: Movie }) {
   const { movies, toggle } = useWatchlist();
@@ -109,6 +110,17 @@ export function MovieCard({ movie }: { movie: Movie }) {
             </>
           )}
         </div>
+        <a
+          href={getImdbUrl(movie)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Tìm ${movie.title} trên IMDb`}
+          className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
+        >
+          <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
+          <span>{movie.imdbRating !== undefined ? `${movie.imdbRating.toFixed(1)}/10` : "Chưa có điểm"}</span>
+          <span aria-hidden="true">↗</span>
+        </a>
       </div>
     </article>
   );

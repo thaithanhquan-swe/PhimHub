@@ -19,6 +19,7 @@ import { RequestError } from "@/components/RequestState";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
+import { getImdbUrl } from "@/lib/imdb";
 import { cn } from "@/lib/utils";
 import {
   getFranchiseParts,
@@ -276,6 +277,17 @@ export function MovieDetailPage() {
               <span className="font-semibold text-white">{movie.year}</span>
               <span>·</span>
               <span>{movie.runtime}</span>
+              <a
+                href={getImdbUrl(movie)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded bg-[#f5c518] px-2 py-1 text-[11px] font-bold text-black hover:bg-[#ffda44]"
+              >
+                IMDb ↗
+                <span className="font-semibold">
+                  {movie.imdbRating !== undefined ? `${movie.imdbRating.toFixed(1)}/10` : "Chưa có điểm"}
+                </span>
+              </a>
               {movie.currentEpisode && (
                 <>
                   <span>·</span>
