@@ -1,14 +1,18 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MovieCard } from "@/components/MovieCard";
+import { MovieRow } from "@/components/MovieRow";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { WatchHistoryProvider, useWatchHistory } from "@/context/WatchHistoryContext";
 import { WatchlistProvider, useWatchlist } from "@/context/WatchlistContext";
 import type { Movie } from "@/data/movies";
 import { getImdbUrl, parseImdbRating } from "@/lib/imdb";
 import { getImdbMetadata } from "@/lib/imdbRating";
+import { queryClient } from "@/lib/queryClient";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { mapNguonCMovie, mapPhimApiMovie } from "@/services/movieApi";
 
 const movie: Movie = {
@@ -21,6 +25,19 @@ const movie: Movie = {
   description: "Test",
   runtime: "90 phút",
 };
+
+function renderWithMovieProviders(ui: React.ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <WatchlistProvider>{ui}</WatchlistProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -83,6 +100,32 @@ describe("watchlist", () => {
   });
 });
 
+describe("movie carousel", () => {
+  it("renders more cards as the user approaches the end of the current batch", async () => {
+    const movies = Array.from({ length: 25 }, (_, index) => ({
+      ...movie,
+      id: `movie-${index}`,
+      slug: `movie-${index}`,
+      title: `Movie ${index}`,
+    }));
+    const { container } = renderWithMovieProviders(
+      <MovieRow title="Popular" movies={movies} />,
+    );
+
+    await vi.waitFor(() => expect(container.querySelectorAll("article")).toHaveLength(6));
+    const row = container.querySelector<HTMLElement>(".overflow-x-auto");
+    expect(row).toBeTruthy();
+    Object.defineProperties(row, {
+      clientWidth: { configurable: true, value: 400 },
+      scrollWidth: { configurable: true, value: 1400 },
+      scrollLeft: { configurable: true, value: 1000 },
+    });
+
+    fireEvent.scroll(row!);
+    await vi.waitFor(() => expect(container.querySelectorAll("article")).toHaveLength(12));
+  });
+});
+
 describe("watch history", () => {
   it("stores playback time and duration and can clear history", () => {
     render(
@@ -134,6 +177,13 @@ describe("player settings", () => {
 });
 
 describe("IMDb metadata", () => {
+  it("uses shared API caching and retry defaults", () => {
+    expect(queryClient.getDefaultOptions().queries).toMatchObject({
+      staleTime: 5 * 60 * 1000,
+      retry: 2,
+    });
+  });
+
   it("uses a known IMDb title URL and safely falls back to title search", () => {
     expect(getImdbUrl({ title: "Test", imdbId: "tt1234567" })).toBe(
       "https://www.imdb.com/title/tt1234567/",
@@ -214,13 +264,7 @@ describe("IMDb metadata", () => {
   });
 
   it("shows the movie type instead of a missing IMDb rating on cards", () => {
-    render(
-      <MemoryRouter>
-        <WatchlistProvider>
-          <MovieCard movie={movie} />
-        </WatchlistProvider>
-      </MemoryRouter>,
-    );
+    renderWithMovieProviders(<MovieCard movie={movie} />);
 
     expect(screen.getByText("Phim lẻ")).toBeTruthy();
     expect(screen.queryByText("IMDb")).toBeNull();
@@ -228,16 +272,26 @@ describe("IMDb metadata", () => {
   });
 
   it("shows IMDb and the score together when a rating is available", () => {
-    render(
-      <MemoryRouter>
-        <WatchlistProvider>
-          <MovieCard movie={{ ...movie, imdbId: "tt0111161", imdbRating: 9.3 }} />
-        </WatchlistProvider>
-      </MemoryRouter>,
+    renderWithMovieProviders(
+      <MovieCard movie={{ ...movie, imdbId: "tt0111161", imdbRating: 9.3 }} />,
     );
 
     expect(screen.getByText("IMDb")).toBeTruthy();
     expect(screen.getByText("9.3/10")).toBeTruthy();
     expect(screen.queryByText("Phim lẻ")).toBeNull();
+  });
+});
+
+describe("Not found page", () => {
+  it("offers navigation back into the app", () => {
+    render(
+      <MemoryRouter>
+        <NotFoundPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Không tìm thấy cảnh này")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Trang chủ/ }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("link", { name: /Tìm phim/ }).getAttribute("href")).toBe("/search");
   });
 });
