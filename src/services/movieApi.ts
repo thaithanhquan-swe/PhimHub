@@ -1,4 +1,5 @@
 import type { EpisodeServer, Movie, MovieDetails } from "@/data/movies";
+import { parseImdbRating } from "@/lib/imdb";
 
 export type { EpisodeItem, EpisodeServer, Movie, MovieDetails } from "@/data/movies";
 
@@ -10,7 +11,7 @@ export type ProviderStatus = {
   baseUrl: string;
   description: string;
   isActive: boolean;
-  status: "online" | "degraded" | "offline";
+  status: "unknown" | "online" | "degraded" | "offline";
   lastError?: string;
   lastChecked?: number;
 };
@@ -72,9 +73,9 @@ if (typeof window !== "undefined") {
   }
 }
 
-const providerHealth: Record<ApiProviderId, { status: "online" | "degraded" | "offline"; lastError?: string; lastChecked: number }> = {
-  phimapi: { status: "online", lastChecked: Date.now() },
-  nguonc: { status: "degraded", lastError: "Máy chủ phát streamc.xyz trả về HTTP 403", lastChecked: Date.now() },
+const providerHealth: Record<ApiProviderId, Pick<ProviderStatus, "status" | "lastError" | "lastChecked">> = {
+  phimapi: { status: "unknown", lastChecked: 0 },
+  nguonc: { status: "unknown", lastChecked: 0 },
 };
 
 // Listeners for real-time UI status updates
@@ -90,6 +91,19 @@ export function setActiveProvider(newProvider: ApiProviderId): void {
     activeProvider = newProvider;
     notifyListeners();
   }
+}
+
+function updateProviderHealth(
+  provider: ApiProviderId,
+  status: ProviderStatus["status"],
+  lastError?: string,
+): void {
+  providerHealth[provider] = {
+    status,
+    lastError,
+    lastChecked: Date.now(),
+  };
+  notifyListeners();
 }
 
 export function getProvidersStatus(): ProviderStatus[] {
@@ -203,7 +217,7 @@ async function executeWithFailover<T>(
 
   try {
     const data = await operation(primary);
-    providerHealth[primary] = { status: "online", lastChecked: Date.now() };
+    updateProviderHealth(primary, "online");
     return { data, provider: primary };
   } catch (primaryErr) {
     // CRITICAL: If aborted by React unmount / page navigation, do NOT treat as provider failure!
@@ -214,15 +228,11 @@ async function executeWithFailover<T>(
     const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
     console.warn(`[Failover] Nguồn ${PROVIDER_CONFIGS[primary].name} gặp sự cố (${errMsg}). Tự động luân phiên sang ${PROVIDER_CONFIGS[fallback].name}...`);
 
-    providerHealth[primary] = {
-      status: "degraded",
-      lastError: errMsg,
-      lastChecked: Date.now(),
-    };
+    updateProviderHealth(primary, "degraded", errMsg);
 
     try {
       const data = await operation(fallback);
-      providerHealth[fallback] = { status: "online", lastChecked: Date.now() };
+      updateProviderHealth(fallback, "online");
       
       // Auto-switch active provider to healthy fallback
       setActiveProvider(fallback);
@@ -232,13 +242,9 @@ async function executeWithFailover<T>(
         throw fallbackErr;
       }
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      providerHealth[fallback] = {
-        status: "offline",
-        lastError: fallbackMsg,
-        lastChecked: Date.now(),
-      };
+      updateProviderHealth(fallback, "offline", fallbackMsg);
       throw new Error(
-        `Cả hai nguồn phim (${PROVIDER_CONFIGS[primary].name} & ${PROVIDER_CONFIGS[fallback].name}) đều không phản hồi: ${errMsg}`,
+        `Cả hai nguồn phim (${PROVIDER_CONFIGS[primary].name}: ${errMsg}; ${PROVIDER_CONFIGS[fallback].name}: ${fallbackMsg}) đều không phản hồi.`,
       );
     }
   }
