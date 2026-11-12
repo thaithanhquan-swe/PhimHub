@@ -9,6 +9,7 @@ import {
   Tv,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
@@ -48,60 +49,50 @@ export function SchedulePage() {
   const todayDay = new Date().getDay(); // 0 is Sunday
   const [selectedDay, setSelectedDay] = useState<number>(todayDay);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [allSeries, setAllSeries] = useState<
-    (Movie & { scheduleDay: number; scheduleHour: string })[]
-  >([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-
-    Promise.allSettled([
-      getMoviesByCategory("phim-bo", 1, controller.signal),
-      getMoviesByGenre("hoat-hinh", 1, controller.signal),
-      getMoviesByCategory("tv-shows", 1, controller.signal),
-    ])
-      .then((results) => {
-        const combined: Movie[] = [];
-        results.forEach((res) => {
-          if (res.status === "fulfilled") {
-            combined.push(...res.value);
-          }
-        });
-
-        // Deduplicate and assign deterministic broadcast schedule
-        const seen = new Set<string>();
-        const scheduled = combined
-          .filter((m) => {
-            if (seen.has(m.slug)) return false;
-            seen.add(m.slug);
-            return true;
-          })
-          .map((m) => {
-            const { dayId, hour } = getDeterministicDayAndHour(m.slug);
-            return {
-              ...m,
-              scheduleDay: dayId,
-              scheduleHour: hour,
-            };
-          });
-
-        setAllSeries(scheduled);
-      })
-      .catch((err: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(err instanceof Error ? err.message : "Không tải được lịch phát sóng.");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-
-    return () => controller.abort();
+    document.title = "Lịch Chiếu Phim & Tập Mới Trong Tuần | PhimHub";
   }, []);
+  const scheduleQuery = useQuery({
+    queryKey: ["schedule-catalog"],
+    queryFn: async ({ signal }) => {
+      const results = await Promise.allSettled([
+        getMoviesByCategory("phim-bo", 1, signal),
+        getMoviesByGenre("hoat-hinh", 1, signal),
+        getMoviesByCategory("tv-shows", 1, signal),
+      ]);
+      const combined: Movie[] = [];
+      results.forEach((result) => {
+        if (result.status === "fulfilled") combined.push(...result.value);
+      });
+      if (combined.length === 0) {
+        throw new Error("Không tải được dữ liệu lịch chiếu từ các nguồn phim.");
+      }
+
+      const seen = new Set<string>();
+      return combined
+        .filter((movie) => {
+          if (seen.has(movie.slug)) return false;
+          seen.add(movie.slug);
+          return true;
+        })
+        .map((movie) => {
+          const schedule = getDeterministicDayAndHour(movie.slug);
+          return {
+            ...movie,
+            scheduleDay: schedule.dayId,
+            scheduleHour: schedule.hour,
+          };
+        });
+    },
+  });
+  const allSeries = scheduleQuery.data ?? [];
+  const loading = scheduleQuery.isLoading;
+  const error = scheduleQuery.error
+    ? scheduleQuery.error instanceof Error
+      ? scheduleQuery.error.message
+      : "Không tải được lịch phát sóng."
+    : "";
 
   const filteredMovies = useMemo(() => {
     return allSeries
@@ -191,7 +182,9 @@ export function SchedulePage() {
       </div>
 
       {loading && <LoadingSkeleton rows={2} />}
-      {error && <RequestError message={error} />}
+      {error && (
+        <RequestError message={error} onRetry={() => void scheduleQuery.refetch()} />
+      )}
 
       {!loading && !error && filteredMovies.length === 0 && (
         <div className="rounded-2xl border border-white/10 bg-[#181818] p-12 text-center text-white/60">
