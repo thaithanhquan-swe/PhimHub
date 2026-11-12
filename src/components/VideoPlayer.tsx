@@ -218,7 +218,7 @@ export function VideoPlayer({
             height,
           }));
 
-        setQualities(availableQualities.length > 1 ? [AUTO_QUALITY, ...availableQualities] : [AUTO_QUALITY]);
+        setQualities([AUTO_QUALITY, ...availableQualities]);
 
         if (autoPlay) {
           const playPromise = video.play();
@@ -1095,7 +1095,7 @@ export function VideoPlayer({
                       </button>
 
                       {/* Quality item */}
-                      {qualities.length > 1 && (
+                      {preferM3U8 && (
                         <button
                           type="button"
                           onClick={() => setActiveSettingsTab("quality")}
@@ -1207,6 +1207,11 @@ export function VideoPlayer({
                           {currentQualityIndex === q.index && <Check className="size-3.5" />}
                         </button>
                       ))}
+                      {qualities.length === 1 && (
+                        <p className="px-3 py-2 text-[11px] leading-4 text-white/55">
+                          Player không phát hiện thêm độ phân giải từ nguồn này.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
