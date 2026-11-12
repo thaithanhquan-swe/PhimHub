@@ -19,6 +19,7 @@ import { RequestError } from "@/components/RequestState";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
+import { useImdbRating } from "@/hooks/useImdbRating";
 import { getImdbUrl } from "@/lib/imdb";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +54,7 @@ export function MovieDetailPage() {
   const [resumeAtTime, setResumeAtTime] = useState(0);
   const [preferEmbed, setPreferEmbed] = useState(false);
   const lastProgressSaveRef = useRef({ episodeKey: "", currentTime: 0 });
+  const imdb = useImdbRating(movie);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -278,14 +280,21 @@ export function MovieDetailPage() {
               <span>·</span>
               <span>{movie.runtime}</span>
               <a
-                href={getImdbUrl(movie)}
+                href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
                 target="_blank"
                 rel="noopener noreferrer"
+                title="Điểm lấy từ Cinemeta; mở trang IMDb"
                 className="inline-flex items-center gap-1.5 rounded bg-[#f5c518] px-2 py-1 text-[11px] font-bold text-black hover:bg-[#ffda44]"
               >
                 IMDb ↗
                 <span className="font-semibold">
-                  {movie.imdbRating !== undefined ? `${movie.imdbRating.toFixed(1)}/10` : "Chưa có điểm"}
+                  {imdb.rating !== undefined
+                    ? `${imdb.rating.toFixed(1)}/10`
+                    : imdb.status === "loading"
+                      ? "Đang tải điểm"
+                      : imdb.status === "error"
+                        ? "Không tải được điểm"
+                        : "Chưa có điểm"}
                 </span>
               </a>
               {movie.currentEpisode && (

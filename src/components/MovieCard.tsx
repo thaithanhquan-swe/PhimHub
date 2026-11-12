@@ -1,14 +1,40 @@
 import { Bookmark, BookmarkCheck, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getPosterUrl, type Movie } from "@/data/movies";
+import { useImdbRating } from "@/hooks/useImdbRating";
 import { getImdbUrl } from "@/lib/imdb";
 
 export function MovieCard({ movie }: { movie: Movie }) {
+  const cardRef = useRef<HTMLElement>(null);
+  const [shouldLoadImdb, setShouldLoadImdb] = useState(false);
   const { movies, toggle } = useWatchlist();
   const saved = movies.some((item) => item.id === movie.id || item.slug === movie.slug);
   const movieId = movie.slug || movie.id;
+  const imdb = useImdbRating(movie, shouldLoadImdb);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    if (!("IntersectionObserver" in window)) {
+      setShouldLoadImdb(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoadImdb(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
 
   const displayEpisode =
     movie.currentEpisode &&
@@ -18,7 +44,7 @@ export function MovieCard({ movie }: { movie: Movie }) {
       : null;
 
   return (
-    <article className="movie-card group relative flex flex-col select-none">
+    <article ref={cardRef} className="movie-card group relative flex flex-col select-none">
       {/* Poster Container */}
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[#1e1e1e] border border-white/5 transition-colors duration-200 group-hover:border-white/20">
         <Link
@@ -111,14 +137,23 @@ export function MovieCard({ movie }: { movie: Movie }) {
           )}
         </div>
         <a
-          href={getImdbUrl(movie)}
+          href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Tìm ${movie.title} trên IMDb`}
+          aria-label={`Xem điểm IMDb của ${movie.title}`}
+          title="Điểm lấy từ Cinemeta; mở trang IMDb"
           className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
         >
           <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
-          <span>{movie.imdbRating !== undefined ? `${movie.imdbRating.toFixed(1)}/10` : "Chưa có điểm"}</span>
+          <span>
+            {imdb.rating !== undefined
+              ? `${imdb.rating.toFixed(1)}/10`
+              : imdb.status === "loading"
+                ? "Đang tải điểm"
+                : imdb.status === "error"
+                  ? "Lỗi tải điểm"
+                  : "Chưa có điểm"}
+          </span>
           <span aria-hidden="true">↗</span>
         </a>
       </div>
