@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl, type Movie } from "@/data/movies";
+import { useImdbRating } from "@/hooks/useImdbRating";
 import { cn } from "@/lib/utils";
 
 export function Hero({
@@ -26,9 +27,20 @@ export function Hero({
   const list = movies.length > 0 ? movies : movie ? [movie] : [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
+  const currentMovie = list[currentIndex] || list[0] || null;
+  const { trailerId } = useImdbRating(currentMovie, true, true);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
 
   // Continuous auto-play loop (every 5 seconds, light and steady)
   useEffect(() => {
@@ -43,9 +55,8 @@ export function Hero({
     };
   }, [list.length, isPaused]);
 
-  if (list.length === 0) return null;
+  if (!currentMovie) return null;
 
-  const currentMovie = list[currentIndex] || list[0];
   const movieId = currentMovie.slug || currentMovie.id;
   const isSaved = savedMovies.some(
     (item) => item.id === currentMovie.id || item.slug === currentMovie.slug,
@@ -98,6 +109,7 @@ export function Hero({
       <div className="absolute inset-0 size-full overflow-hidden bg-[#121212]">
         {list.map((m, idx) => {
           const isActive = idx === currentIndex;
+          const isNext = idx === (currentIndex + 1) % list.length;
           return (
             <div
               key={m.id || m.slug || idx}
@@ -106,14 +118,26 @@ export function Hero({
                 isActive ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none",
               )}
             >
-              <img
-                src={getBackdropUrl(m, "w1280")}
-                alt={m.title}
-                fetchPriority={idx === 0 ? "high" : "low"}
-                decoding="async"
-                loading={idx <= 1 ? "eager" : "lazy"}
-                className="size-full object-cover object-[center_20%]"
-              />
+              {(isActive || isNext) && (
+                <img
+                  src={getBackdropUrl(m, "w1280")}
+                  alt={m.title}
+                  fetchPriority={isActive ? "high" : "auto"}
+                  decoding="async"
+                  loading={isActive ? "eager" : "lazy"}
+                  className="size-full object-cover object-[center_20%]"
+                />
+              )}
+              {isActive && trailerId && !prefersReducedMotion && (
+                <iframe
+                  key={trailerId}
+                  src={`https://www.youtube-nocookie.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerId}&playsinline=1&rel=0`}
+                  title={`Trailer ${m.title}`}
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  className="absolute inset-0 size-full border-0 object-cover"
+                />
+              )}
             </div>
           );
         })}

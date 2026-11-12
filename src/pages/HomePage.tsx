@@ -4,7 +4,8 @@ import {
   Film,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
@@ -15,22 +16,15 @@ import { MovieFilterBar } from "@/components/MovieFilterBar";
 import { MovieRow } from "@/components/MovieRow";
 import { RequestError } from "@/components/RequestState";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { getBackdropUrl } from "@/data/movies";
 import { cn } from "@/lib/utils";
 import {
   getFilteredCatalog,
   getHomeSections,
   type FilterParams,
-  type FilterResult,
-  type MovieSection,
 } from "@/services/movieApi";
 
 export function HomePage() {
-  const [sections, setSections] = useState<MovieSection[] | null>(null);
-  const [catalogResult, setCatalogResult] = useState<FilterResult | null>(null);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { movies: savedMovies, clear: clearSavedMovies } = useWatchlist();
@@ -50,59 +44,39 @@ export function HomePage() {
       (yearParam && yearParam !== "all"),
   );
 
-  // Fetch standard home sections (ONLY when on home page, avoiding redundant heavy calls in filter mode)
-  useEffect(() => {
-    if (isFilterMode || savedOnly) {
-      setSections(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    setError("");
-    getHomeSections(controller.signal, null)
-      .then(setSections)
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : "Có lỗi khi tải danh sách phim.");
-      });
-
-    return () => controller.abort();
-  }, [attempt, isFilterMode, savedOnly]);
-
-  // Fetch filtered catalog when in filter mode
-  useEffect(() => {
-    if (!isFilterMode) {
-      setCatalogResult(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoadingCatalog(true);
-    setError("");
-
-    getFilteredCatalog(
-      {
-        type: typeParam || "all",
-        genre: genreParam,
-        country: countryParam,
-        year: yearParam,
-        page: pageParam,
-      },
-      controller.signal,
-    )
-      .then((res) => {
-        setCatalogResult(res);
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : "Không thể tải danh sách phim.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingCatalog(false);
-      });
-
-    return () => controller.abort();
-  }, [isFilterMode, typeParam, genreParam, countryParam, yearParam, pageParam]);
+  const homeQuery = useQuery({
+    queryKey: ["home-sections", null],
+    queryFn: ({ signal }) => getHomeSections(signal, null),
+    enabled: !isFilterMode && !savedOnly,
+  });
+  const filterParams: FilterParams = {
+    type: typeParam || "all",
+    genre: genreParam,
+    country: countryParam,
+    year: yearParam,
+    page: pageParam,
+  };
+  const catalogQuery = useQuery({
+    queryKey: [
+      "filtered-catalog",
+      filterParams.type,
+      filterParams.genre,
+      filterParams.country,
+      filterParams.year,
+      filterParams.page,
+    ],
+    queryFn: ({ signal }) => getFilteredCatalog(filterParams, signal),
+    enabled: isFilterMode,
+  });
+  const sections = homeQuery.data ?? null;
+  const catalogResult = catalogQuery.data ?? null;
+  const loadingCatalog = catalogQuery.isLoading;
+  const activeError = isFilterMode ? catalogQuery.error : homeQuery.error;
+  const errorMessage = activeError
+    ? activeError instanceof Error
+      ? activeError.message
+      : "Không thể tải danh sách phim."
+    : "";
 
   const featuredMovies = useMemo(() => {
     if (!sections || sections.length === 0) return [];
@@ -154,16 +128,34 @@ export function HomePage() {
           ? "Kho Hoạt Hình & Anime Tuyển Chọn"
           : "Kho Phim Chọn Lọc";
 
-  if (!sections && !catalogResult && !error && !savedOnly) return <LoadingSkeleton />;
+  useEffect(() => {
+    if (isFilterMode) {
+      document.title = `${categoryTitle} | PhimHub`;
+    } else if (savedOnly) {
+      document.title = "Danh sách phim đã lưu | PhimHub";
+    } else {
+      document.title = "PhimHub — Cả thế giới phim trong tầm tay";
+    }
+  }, [isFilterMode, categoryTitle, savedOnly]);
+
+  if (!sections && !catalogResult && !activeError && !savedOnly) return <LoadingSkeleton />;
 
   return (
     <main className="pb-28 lg:pb-16 min-h-screen">
       {/* Hero Banner Carousel (Shown on default Home page ONLY for maximum smoothness & fast category page loads) */}
       {!savedOnly && !isFilterMode && featuredMovies.length > 0 && (
-        <Hero
-          movies={featuredMovies}
-          onPlay={(movie) => navigate(`/movie/${movie.slug || movie.id}?play=true`)}
-        />
+        <>
+          <link
+            rel="preload"
+            as="image"
+            href={getBackdropUrl(featuredMovies[0], "w1280")}
+            fetchPriority="high"
+          />
+          <Hero
+            movies={featuredMovies}
+            onPlay={(movie) => navigate(`/movie/${movie.slug || movie.id}?play=true`)}
+          />
+        </>
       )}
 
       {/* Saved Movies View */}
@@ -210,9 +202,15 @@ export function HomePage() {
       )}
 
       {/* Error Notice */}
-      {error && (
+      {activeError && (
         <div className="pt-10 px-4 sm:px-[4.5%]">
-          <RequestError message={error} onRetry={() => setAttempt((value) => value + 1)} />
+          <RequestError
+            message={errorMessage}
+            onRetry={() => {
+              if (isFilterMode) void catalogQuery.refetch();
+              else void homeQuery.refetch();
+            }}
+          />
         </div>
       )}
 
