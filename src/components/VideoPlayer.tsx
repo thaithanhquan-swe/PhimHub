@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Gauge,
   Loader2,
+  Lock,
   Maximize,
   Minimize,
   Pause,
@@ -97,11 +98,19 @@ export function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
   const [isManualFullscreen, setIsManualFullscreen] = useState(false);
+  const [isLandscapeView, setIsLandscapeView] = useState(false);
+  const [isForceLandscape, setIsForceLandscape] = useState(false);
+  const [isScreenLocked, setIsScreenLocked] = useState(false);
+  const [showUnlockButton, setShowUnlockButton] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio">("main");
   const [seekFeedback, setSeekFeedback] = useState<string | null>(null);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+
+  const unlockButtonTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setUseEmbedFallback(preferEmbed);
@@ -136,6 +145,129 @@ export function VideoPlayer({
       setSeekFeedback(null);
     }, 600);
   };
+
+  const triggerToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2200);
+  }, []);
+
+  const resetUnlockButtonTimer = useCallback(() => {
+    if (unlockButtonTimerRef.current) {
+      window.clearTimeout(unlockButtonTimerRef.current);
+    }
+    unlockButtonTimerRef.current = window.setTimeout(() => {
+      setShowUnlockButton(false);
+    }, 3500);
+  }, []);
+
+  const handleLockScreen = useCallback(() => {
+    setIsScreenLocked(true);
+    setShowControls(false);
+    setIsSettingsOpen(false);
+    setIsVolumeSliderOpen(false);
+    setShowUnlockButton(true);
+    resetUnlockButtonTimer();
+    triggerToast("Đã khóa màn hình");
+  }, [resetUnlockButtonTimer, triggerToast]);
+
+  const handleUnlockScreen = useCallback(() => {
+    setIsScreenLocked(false);
+    setShowUnlockButton(false);
+    setShowControls(true);
+    resetHideControlsTimer();
+    triggerToast("Đã mở khóa màn hình");
+  }, [resetHideControlsTimer, triggerToast]);
+
+  const handleToggleScreenOrientation = useCallback(async () => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const orientation = screen.orientation as
+      | (ScreenOrientation & {
+          lock?: (orientation: "landscape" | "portrait") => Promise<void>;
+          unlock?: () => void;
+        })
+      | undefined;
+
+    const isCurrentlyLandscape = Boolean(
+      document.fullscreenElement ||
+      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
+      isManualFullscreen ||
+      isForceLandscape ||
+      isLandscapeView
+    );
+
+    // 2nd click: Return to portrait/vertical mode
+    if (isCurrentlyLandscape) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
+        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      }
+
+      if (orientation?.unlock) {
+        try {
+          orientation.unlock();
+        } catch {
+          // Ignore
+        }
+      }
+      if (orientation?.lock) {
+        try {
+          orientation.lock("portrait").catch(() => {});
+        } catch {
+          // Ignore
+        }
+      }
+
+      setIsForceLandscape(false);
+      setIsManualFullscreen(false);
+      setIsLandscapeView(false);
+      triggerToast("Chế độ dọc");
+      resetHideControlsTimer();
+      return;
+    }
+
+    // 1st click: Rotate screen to landscape for easier viewing
+    setIsLandscapeView(true);
+    triggerToast("Xoay ngang màn hình");
+
+    let lockSucceeded = false;
+    if (container.requestFullscreen) {
+      try {
+        await container.requestFullscreen();
+      } catch {
+        // Fullscreen API may be blocked or unsupported on iOS Safari
+      }
+    }
+
+    if (orientation?.lock) {
+      try {
+        await orientation.lock("landscape");
+        lockSucceeded = true;
+      } catch {
+        // Ignore if unsupported or denied
+      }
+    }
+
+    const isPhysicalLandscape = window.innerWidth > window.innerHeight;
+    if (isPhysicalLandscape || lockSucceeded) {
+      setIsForceLandscape(false);
+      setIsManualFullscreen(true);
+    } else {
+      // Device is in portrait and orientation lock couldn't rotate viewport (e.g. iOS Safari)
+      // Force 90deg CSS rotation for horizontal viewing
+      setIsForceLandscape(true);
+      setIsManualFullscreen(true);
+    }
+
+    resetHideControlsTimer();
+  }, [isForceLandscape, isLandscapeView, isManualFullscreen, resetHideControlsTimer, triggerToast]);
 
   // Setup video source & HLS
   useEffect(() => {
@@ -419,6 +551,10 @@ export function VideoPlayer({
         (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
       );
       setIsFullscreen(isFs);
+      if (!isFs && !isForceLandscape) {
+        setIsLandscapeView(false);
+        setIsManualFullscreen(false);
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -427,6 +563,27 @@ export function VideoPlayer({
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    };
+  }, [isForceLandscape]);
+
+  // Lock body scroll when in fullscreen or force landscape mode
+  useEffect(() => {
+    if (isManualFullscreen || isForceLandscape || isFullscreen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isManualFullscreen, isForceLandscape, isFullscreen]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (hideControlsTimerRef.current) window.clearTimeout(hideControlsTimerRef.current);
+      if (seekOverlayTimerRef.current) window.clearTimeout(seekOverlayTimerRef.current);
+      if (unlockButtonTimerRef.current) window.clearTimeout(unlockButtonTimerRef.current);
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -437,11 +594,17 @@ export function VideoPlayer({
         window.innerWidth > window.innerHeight &&
         (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches);
       setIsDeviceLandscape(isMobileLandscape);
+
+      // If physical orientation became landscape, clear force landscape
+      if (window.innerWidth > window.innerHeight) {
+        setIsForceLandscape(false);
+      }
     };
     const handleOrientationChange = () => {
       updateOrientation();
-      if (window.innerWidth <= window.innerHeight) {
+      if (window.innerWidth <= window.innerHeight && !isLandscapeView) {
         setIsManualFullscreen(false);
+        setIsForceLandscape(false);
       }
     };
 
@@ -452,11 +615,13 @@ export function VideoPlayer({
       window.removeEventListener("orientationchange", handleOrientationChange);
       window.removeEventListener("resize", updateOrientation);
     };
-  }, []);
+  }, [isLandscapeView]);
 
   // Keyboard Shortcuts (Netflix Standard)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isScreenLocked) return;
+
       // Don't intercept if user is typing in an input
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
         return;
@@ -473,7 +638,7 @@ export function VideoPlayer({
           break;
         case "f":
           e.preventDefault();
-          toggleFullscreen();
+          handleToggleScreenOrientation();
           break;
         case "m":
           e.preventDefault();
@@ -508,7 +673,7 @@ export function VideoPlayer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [volume, hasNextEpisode, onNextEpisode]);
+  }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation]);
 
   // Actions
   function togglePlay() {
@@ -531,19 +696,29 @@ export function VideoPlayer({
     resetHideControlsTimer();
   }
 
+  const isRotatedLandscape =
+    isForceLandscape &&
+    (typeof window !== "undefined" ? window.innerWidth < window.innerHeight : false);
+
   function handleTimelineScrub(e: React.MouseEvent<HTMLDivElement>) {
+    if (isScreenLocked) return;
     const video = videoRef.current;
     if (!video || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pos = isRotatedLandscape
+      ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+      : Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     video.currentTime = pos * duration;
     resetHideControlsTimer();
   }
 
   function handleTimelineHover(e: React.MouseEvent<HTMLDivElement>) {
+    if (isScreenLocked) return;
     if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pos = isRotatedLandscape
+      ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+      : Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setHoverTime(pos * duration);
     setHoverPosition(pos * 100);
   }
@@ -596,90 +771,6 @@ export function VideoPlayer({
     resetHideControlsTimer();
   }
 
-  function toggleFullscreen() {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const isCurrentlyFullscreen = Boolean(
-      document.fullscreenElement ||
-      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
-      isManualFullscreen
-    );
-
-    if (!isCurrentlyFullscreen) {
-      if (container.requestFullscreen) {
-        container
-          .requestFullscreen()
-          .then(async () => {
-            if (screen.orientation && "lock" in screen.orientation) {
-              try {
-                await (screen.orientation as unknown as { lock: (mode: string) => Promise<void> })
-                  .lock("landscape");
-              } catch {
-                // Fullscreen still works when orientation locking is unavailable.
-              }
-            }
-          })
-          .catch(() => setIsManualFullscreen(true));
-      } else {
-        setIsManualFullscreen(true);
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
-        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      }
-      setIsManualFullscreen(false);
-      if (screen.orientation && "unlock" in screen.orientation) {
-        screen.orientation.unlock();
-      }
-    }
-  }
-
-  // Use native fullscreen/orientation APIs; never rotate iframe controls sideways.
-  async function handleRotateScreen() {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const orientation = screen.orientation as
-      | (ScreenOrientation & {
-          lock?: (orientation: "landscape") => Promise<void>;
-          unlock?: () => void;
-        })
-      | undefined;
-
-    const isCurrentlyFullscreen = Boolean(
-      document.fullscreenElement ||
-      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
-    );
-
-    if (isCurrentlyFullscreen || isManualFullscreen) {
-      setIsManualFullscreen(false);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
-        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      }
-      orientation?.unlock?.();
-      return;
-    }
-
-    try {
-      if (container.requestFullscreen) {
-        await container.requestFullscreen();
-        if (orientation?.lock) {
-          await orientation.lock("landscape");
-        }
-        return;
-      }
-    } catch {
-      // Fall back to an upright in-page fullscreen player when the browser denies fullscreen.
-    }
-
-    setIsManualFullscreen(true);
-  }
-
   async function togglePiP() {
     const video = videoRef.current;
     if (!video) return;
@@ -696,17 +787,25 @@ export function VideoPlayer({
 
   // Touch scrub for mobile devices
   const handleTimelineScrubTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isScreenLocked) return;
     if (!videoRef.current || !duration || duration <= 0) return;
     const touch = e.touches[0];
     if (!touch) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    const pos = isRotatedLandscape
+      ? Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height))
+      : Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
     videoRef.current.currentTime = pos * duration;
     setCurrentTime(pos * duration);
     resetHideControlsTimer();
   };
 
   const handleVideoClick = () => {
+    if (isScreenLocked) {
+      setShowUnlockButton(true);
+      resetUnlockButtonTimer();
+      return;
+    }
     if (!showControls && isPlaying) {
       setShowControls(true);
       resetHideControlsTimer();
@@ -722,7 +821,8 @@ export function VideoPlayer({
         ref={containerRef}
         className={cn(
           "relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 group/embed",
-          (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
+          isForceLandscape && "player-force-landscape",
+          !isForceLandscape && (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
         )}
       >
         {m3u8Url && (
@@ -736,12 +836,24 @@ export function VideoPlayer({
         )}
         <button
           type="button"
-          onClick={handleRotateScreen}
+          onClick={handleToggleScreenOrientation}
           className="absolute left-2 top-2 z-30 grid size-9 place-items-center rounded-full bg-black/70 text-white/90 backdrop-blur-sm hover:bg-black"
-          title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
-          aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
+          title={
+            isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+              ? "Chế độ dọc"
+              : "Xoay ngang màn hình"
+          }
+          aria-label={
+            isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+              ? "Chế độ dọc"
+              : "Xoay ngang màn hình"
+          }
         >
-          <Smartphone className="size-4 rotate-90 text-primary" />
+          {isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape ? (
+            <Minimize className="size-4" />
+          ) : (
+            <Maximize className="size-4" />
+          )}
         </button>
         <iframe
           key={embedUrl}
@@ -763,13 +875,20 @@ export function VideoPlayer({
     <div
       ref={containerRef}
       onMouseMove={resetHideControlsTimer}
+      onTouchStart={() => {
+        if (isScreenLocked) {
+          setShowUnlockButton(true);
+          resetUnlockButtonTimer();
+        }
+      }}
       onMouseLeave={() => {
         if (isPlaying && !isSettingsOpen) setShowControls(false);
       }}
       className={cn(
         "group relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 select-none",
         !showControls && isPlaying && "cursor-none",
-        (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
+        isForceLandscape && "player-force-landscape",
+        !isForceLandscape && (isDeviceLandscape || isManualFullscreen) && "player-landscape-mode",
       )}
     >
       {/* Native HTML5 Video Player */}
@@ -778,7 +897,10 @@ export function VideoPlayer({
         playsInline
         poster={poster}
         onClick={handleVideoClick}
-        onDoubleClick={toggleFullscreen}
+        onDoubleClick={() => {
+          if (isScreenLocked) return;
+          handleToggleScreenOrientation();
+        }}
         className={cn(
           "size-full bg-black transition-all",
           aspectRatio === "cover" ? "object-cover" : "object-contain",
@@ -786,8 +908,45 @@ export function VideoPlayer({
         preload="auto"
       />
 
+      {/* Floating Unlock Button when Screen is Locked */}
+      {isScreenLocked && (
+        <div
+          className={cn(
+            "absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 z-50 transition-all duration-300",
+            showUnlockButton
+              ? "opacity-100 scale-100 pointer-events-auto"
+              : "opacity-35 hover:opacity-100 focus:opacity-100 scale-95 pointer-events-auto",
+          )}
+        >
+          <button
+            type="button"
+            onClick={handleUnlockScreen}
+            className="flex items-center gap-2 rounded-full border border-primary/40 bg-black/90 px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-white shadow-2xl backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
+            title="Nhấn để mở khóa màn hình"
+            aria-label="Mở khóa màn hình"
+          >
+            <Lock className="size-4 text-primary animate-pulse" />
+            <span>Mở khóa</span>
+          </button>
+        </div>
+      )}
+
+      {/* Toast Notification (Screen lock/unlock, orientation switch) */}
+      {toastMessage && (
+        <div className="pointer-events-none absolute top-14 left-1/2 -translate-x-1/2 z-40">
+          <div className="flex items-center gap-2 rounded-full bg-black/85 border border-white/20 px-4 py-2 text-xs font-bold text-white shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+            {toastMessage.includes("khóa") ? (
+              <Lock className="size-3.5 text-primary" />
+            ) : (
+              <Smartphone className="size-3.5 text-primary rotate-90" />
+            )}
+            <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Big Center Play Button when paused and not actively loading */}
-      {!isPlaying && !isLoading && !error && (
+      {!isPlaying && !isLoading && !error && !isScreenLocked && (
         <button
           type="button"
           onClick={togglePlay}
@@ -811,7 +970,7 @@ export function VideoPlayer({
       )}
 
       {/* Muted Autoplay Indicator Notification */}
-      {mutedAutoplayNotice && isPlaying && isMuted && (
+      {mutedAutoplayNotice && isPlaying && isMuted && !isScreenLocked && (
         <button
           type="button"
           onClick={() => {
@@ -839,7 +998,7 @@ export function VideoPlayer({
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/85 via-black/40 to-transparent p-4 sm:p-6 transition-opacity duration-300",
-          showControls || !isPlaying ? "opacity-100" : "opacity-0",
+          (!isScreenLocked && (showControls || !isPlaying)) ? "opacity-100" : "opacity-0",
         )}
       >
         <div>
@@ -858,7 +1017,7 @@ export function VideoPlayer({
       <div
         className={cn(
           "absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 sm:px-5 pb-3 sm:pb-4 pt-12 transition-opacity duration-300",
-          showControls || !isPlaying ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+          (!isScreenLocked && (showControls || !isPlaying)) ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
         )}
       >
         {/* Interactive Scrub Timeline Bar */}
@@ -1208,35 +1367,45 @@ export function VideoPlayer({
               <PictureInPicture2 className="size-4" />
             </button>
 
-            {/* Rotate to landscape button (Mobile & touch-friendly) */}
+            {/* Screen Lock Button (Red icon button) */}
             <button
               type="button"
-              onClick={handleRotateScreen}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
-              title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
-              aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Xoay ngang màn hình"}
+              onClick={handleLockScreen}
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all text-white/90 hover:text-white"
+              title="Khóa màn hình"
+              aria-label="Khóa màn hình"
             >
-              <Smartphone className="size-4 rotate-90 text-primary" />
+              <Lock className="size-4 text-primary" />
             </button>
 
-            {/* Fullscreen */}
+            {/* Landscape / Portrait Orientation Toggle (Right button) */}
             <button
               type="button"
-              onClick={toggleFullscreen}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all"
-              title={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình (F)" : "Toàn màn hình (F)"}
-              aria-label={isFullscreen || isManualFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+              onClick={handleToggleScreenOrientation}
+              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
+              title={
+                isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+                  ? "Chế độ dọc (F)"
+                  : "Xoay ngang màn hình (F)"
+              }
+              aria-label={
+                isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape
+                  ? "Chế độ dọc"
+                  : "Xoay ngang màn hình"
+              }
             >
-              {isFullscreen || isManualFullscreen
-                ? <Minimize className="size-4 sm:size-5" />
-                : <Maximize className="size-4 sm:size-5" />}
+              {isLandscapeView || isFullscreen || isManualFullscreen || isForceLandscape ? (
+                <Minimize className="size-4 sm:size-5" />
+              ) : (
+                <Maximize className="size-4 sm:size-5" />
+              )}
             </button>
           </div>
         </div>
       </div>
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}
-      {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && (
+      {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && !isScreenLocked && (
         <div className="absolute bottom-20 right-4 z-30 flex items-center gap-3 rounded-xl border border-white/20 bg-black/85 p-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 duration-300">
           <div className="text-left">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Tập tiếp theo</p>
