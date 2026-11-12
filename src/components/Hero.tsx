@@ -62,6 +62,20 @@ export function Hero({
     (item) => item.id === currentMovie.id || item.slug === currentMovie.slug,
   );
 
+  const heroDescription =
+    currentMovie.description && !currentMovie.description.includes("Chưa có mô tả")
+      ? currentMovie.description
+      : [
+          currentMovie.originalTitle && currentMovie.originalTitle !== currentMovie.title
+            ? currentMovie.originalTitle
+            : "",
+          currentMovie.genre,
+          currentMovie.year ? `Năm phát hành: ${currentMovie.year}` : "",
+          currentMovie.currentEpisode ? `Tình trạng: ${currentMovie.currentEpisode}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ") || `${currentMovie.title} - Phim chất lượng cao trên PhimHub.`;
+
   function handlePrev() {
     setCurrentIndex((prev) => (prev - 1 + list.length) % list.length);
   }
@@ -198,7 +212,7 @@ export function Hero({
 
         {/* Description */}
         <p className="mt-3.5 line-clamp-3 max-w-[620px] text-xs leading-5 sm:text-sm sm:leading-6 text-white/90 drop-shadow">
-          {currentMovie.description}
+          {heroDescription}
         </p>
 
         {/* Action Buttons */}

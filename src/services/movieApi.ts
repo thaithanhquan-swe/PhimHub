@@ -404,6 +404,27 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
     item.imdb_rating ?? (typeof item.imdb === "object" ? item.imdb?.rating : undefined),
   );
 
+  const categories = Array.isArray(item.category)
+    ? item.category.map((c) => c.name).filter(Boolean)
+    : [];
+  const countries = Array.isArray(item.country)
+    ? item.country.map((c) => c.name).filter(Boolean)
+    : [];
+
+  const genreText = categories.slice(0, 3).join(", ");
+  const countryText = countries.slice(0, 2).join(", ");
+
+  const fallbackSummary =
+    [
+      item.origin_name && item.origin_name !== item.name ? item.origin_name : "",
+      genreText,
+      countryText,
+      item.episode_current ? `Tình trạng: ${item.episode_current}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") ||
+    `${item.name} (${yearNum || new Date().getFullYear()}) - Phim ${isSeries ? "bộ" : "lẻ"} ${quality} ${language} trên PhimHub.`;
+
   return {
     id: item.slug,
     slug: item.slug,
@@ -417,7 +438,7 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
     image: poster,
     posterUrl: poster,
     backdropUrl: backdrop,
-    description: cleanDesc || "Chưa có mô tả cho bộ phim này.",
+    description: cleanDesc || fallbackSummary,
     runtime: item.time || (isSeries ? "Đang chiếu" : "Bản đẹp"),
     quality,
     language,
@@ -465,6 +486,16 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
   const language = item.language || "Vietsub";
   const imdbRating = parseImdbRating(item.imdb?.rating);
 
+  const fallbackNguonCSummary =
+    [
+      item.original_name && item.original_name !== item.name ? item.original_name : "",
+      quality && language ? `${quality} · ${language}` : "",
+      item.current_episode ? `Tình trạng: ${item.current_episode}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") ||
+    `${item.name} (${yearNum || new Date().getFullYear()}) - Phim ${isSeries ? "bộ" : "lẻ"} ${quality} ${language} trên PhimHub.`;
+
   return {
     id: item.slug,
     slug: item.slug,
@@ -478,7 +509,7 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
     image: poster,
     posterUrl: poster,
     backdropUrl: backdrop,
-    description: cleanDesc || "Chưa có mô tả cho bộ phim này.",
+    description: cleanDesc || fallbackNguonCSummary,
     runtime: item.time || (isSeries ? `${totalEp} tập` : "Bản đẹp"),
     quality,
     language,
