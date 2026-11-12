@@ -19,6 +19,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { RequestError } from "@/components/RequestState";
+import { TrailerBackground } from "@/components/TrailerBackground";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
@@ -95,7 +96,7 @@ export function MovieDetailPage() {
     enabled: Boolean(movie),
   });
   const recommendations = recommendationQuery.data ?? movie?.recommendations ?? [];
-  const imdb = useImdbRating(movie);
+  const imdb = useImdbRating(movie, true, true);
   const paramServer = searchParams.get("server");
   const paramEp = searchParams.get("ep");
 
@@ -265,14 +266,14 @@ export function MovieDetailPage() {
     <main className="pb-28 lg:pb-16 pt-[62px] sm:pt-[66px] lg:pt-[72px]">
       {/* Banner & Information */}
       <section className="relative min-h-[420px] overflow-hidden sm:min-h-[560px]">
-        <img
-          src={getBackdropUrl(movie)}
-          alt={movie.title}
-          fetchPriority="high"
-          className="absolute inset-0 size-full object-cover object-[center_20%]"
+        <TrailerBackground
+          backdropUrl={getBackdropUrl(movie)}
+          trailerSource={movie.trailerUrl || imdb.trailerId}
+          title={movie.title}
+          priority="high"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/85 to-[#141414]/30" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/40 to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/85 to-[#141414]/30 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/40 to-black/30 pointer-events-none" />
 
         <div className="relative z-10 flex min-h-[460px] items-end gap-6 px-4 pb-10 sm:min-h-[560px] sm:px-[4.5%] sm:pb-14">
           <img
