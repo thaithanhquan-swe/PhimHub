@@ -296,24 +296,7 @@ export function VideoPlayer({
     setIsLandscapeView(true);
     triggerToast("Xoay ngang màn hình");
 
-    // Case 1: iOS iPhone Safari - trigger native video fullscreen so the entire iPhone rotates to landscape!
-    const isIPhone = /iPhone|iPod/i.test(navigator.userAgent);
-    if (
-      isIPhone &&
-      video &&
-      typeof (video as unknown as { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen === "function"
-    ) {
-      try {
-        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-        setIsFullscreen(true);
-        resetHideControlsTimer();
-        return;
-      } catch (err) {
-        console.warn("webkitEnterFullscreen error:", err);
-      }
-    }
-
-    // Case 2: Standard Fullscreen API (Android Chrome, Desktop, iPad, etc.)
+    // Fullscreen API (Android Chrome, Desktop, iPad, etc.)
     if (container.requestFullscreen) {
       try {
         await container.requestFullscreen();
@@ -328,16 +311,6 @@ export function VideoPlayer({
       } catch (err) {
         console.warn("webkitRequestFullscreen error:", err);
       }
-    } else if (
-      video &&
-      typeof (video as unknown as { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen === "function"
-    ) {
-      try {
-        (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-        setIsFullscreen(true);
-        resetHideControlsTimer();
-        return;
-      } catch {}
     }
 
     // Lock orientation to landscape on devices that support Screen Orientation API (e.g. Android)
@@ -663,27 +636,21 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Track iOS native fullscreen events on <video>
+  // Prevent iOS Safari from ever launching native QuickTime default player
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleBeginFs = () => {
-      setIsFullscreen(true);
-      setIsLandscapeView(true);
-    };
-    const handleEndFs = () => {
-      setIsFullscreen(false);
-      setIsLandscapeView(false);
-      setIsManualFullscreen(false);
+      if (typeof (video as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen === "function") {
+        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
+      }
     };
 
     video.addEventListener("webkitbeginfullscreen", handleBeginFs);
-    video.addEventListener("webkitendfullscreen", handleEndFs);
 
     return () => {
       video.removeEventListener("webkitbeginfullscreen", handleBeginFs);
-      video.removeEventListener("webkitendfullscreen", handleEndFs);
     };
   }, []);
 
@@ -1001,6 +968,8 @@ export function VideoPlayer({
       <video
         ref={videoRef}
         playsInline
+        webkit-playsinline="true"
+        x5-playsinline="true"
         poster={poster}
         onClick={handleVideoClick}
         onDoubleClick={() => {
