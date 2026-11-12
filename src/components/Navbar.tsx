@@ -11,26 +11,43 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DropdownFilter } from "@/components/DropdownFilter";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { cn } from "@/lib/utils";
-import { FILTER_OPTIONS } from "@/services/movieApi";
+import { FILTER_OPTIONS, searchMovies } from "@/services/movieApi";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const suggestionQuery = useQuery({
+    queryKey: ["movie-search", debouncedQuery],
+    queryFn: ({ signal }) => searchMovies(debouncedQuery, 1, signal),
+    enabled: searchFocused && debouncedQuery.length >= 2,
+  });
+  const suggestions =
+    searchFocused && query.trim() === debouncedQuery ? (suggestionQuery.data ?? []).slice(0, 5) : [];
 
   // Close mobile drawer on route change
   useEffect(() => {
     setMobileMenuOpen(false);
+    setSearchFocused(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   // Prevent background scroll when mobile menu is open
   useEffect(() => {
@@ -64,9 +81,18 @@ export function Navbar() {
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = query.trim();
+    const selected = suggestions[activeSuggestionIndex];
+    if (selected) {
+      navigate(`/movie/${selected.slug || selected.id}`);
+      setQuery("");
+      setSearchFocused(false);
+      setActiveSuggestionIndex(-1);
+      return;
+    }
     if (value) {
       navigate(`/search?q=${encodeURIComponent(value)}`);
       setQuery("");
+      setSearchFocused(false);
     }
   }
 
@@ -203,14 +229,35 @@ export function Navbar() {
         <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-1 max-w-[200px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
 
-          <form onSubmit={submitSearch} className="flex-1 min-w-[95px] sm:min-w-[140px]">
+          <form onSubmit={submitSearch} className="relative flex-1 min-w-[95px] sm:min-w-[140px]">
             <div className="relative flex h-9 sm:h-10 w-full items-center gap-2 rounded-full border border-white/20 bg-black/50 px-3 sm:px-4 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/80">
               <Search className="size-3.5 sm:size-4 shrink-0 text-white/70" />
               <input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setActiveSuggestionIndex(-1);
+                }}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" && suggestions.length > 0) {
+                    event.preventDefault();
+                    setActiveSuggestionIndex((index) => (index + 1) % suggestions.length);
+                  } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+                    event.preventDefault();
+                    setActiveSuggestionIndex((index) => (index <= 0 ? suggestions.length - 1 : index - 1));
+                  } else if (event.key === "Escape") {
+                    setSearchFocused(false);
+                    setActiveSuggestionIndex(-1);
+                  }
+                }}
                 placeholder="Tìm phim..."
                 aria-label="Tìm phim"
+                aria-autocomplete="list"
+                aria-expanded={suggestions.length > 0}
+                aria-controls="navbar-search-suggestions"
+                role="combobox"
                 className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45 text-white pr-1"
               />
               {query && (
@@ -224,6 +271,40 @@ export function Navbar() {
                 </button>
               )}
             </div>
+            {suggestions.length > 0 && (
+              <ul
+                id="navbar-search-suggestions"
+                role="listbox"
+                aria-label="Gợi ý phim"
+                className="absolute right-0 top-full z-[60] mt-2 w-[min(90vw,26rem)] overflow-hidden rounded-xl border border-white/10 bg-[#181818] p-1.5 shadow-2xl"
+              >
+                {suggestions.map((movie, index) => (
+                  <li key={movie.id || movie.slug} role="option" aria-selected={index === activeSuggestionIndex}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        navigate(`/movie/${movie.slug || movie.id}`);
+                        setQuery("");
+                        setSearchFocused(false);
+                        setActiveSuggestionIndex(-1);
+                      }}
+                      className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                        index === activeSuggestionIndex ? "bg-white/15" : "hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-white">{movie.title}</span>
+                        <span className="block truncate text-xs text-white/50">
+                          {movie.originalTitle || movie.kind}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-white/50">{movie.year}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </form>
         </div>
       </header>
@@ -366,7 +447,7 @@ export function Navbar() {
               to={to}
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 py-1 min-h-[44px] text-[10px] font-medium transition-all active:scale-95 select-none",
-                active ? "text-primary font-bold" : "text-white/60 hover:text-white",
+                active ? "text-[#ff5964] font-bold" : "text-white/70 hover:text-white",
               )}
             >
               <Icon className="size-4.5 shrink-0" />
