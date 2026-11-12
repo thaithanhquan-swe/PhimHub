@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import type { Movie } from "@/data/movies";
 import { getImdbMetadata } from "@/lib/imdbRating";
@@ -6,44 +6,50 @@ import { getImdbMetadata } from "@/lib/imdbRating";
 type ImdbRatingState = {
   imdbId?: string;
   rating?: number;
+  trailerId?: string;
   status: "loading" | "ready" | "empty" | "error";
 };
 
-export function useImdbRating(movie: Movie | null, enabled = true): ImdbRatingState {
-  const [state, setState] = useState<ImdbRatingState>({
-    imdbId: movie?.imdbId,
-    rating: movie?.imdbRating,
-    status: movie?.imdbRating !== undefined ? "ready" : "loading",
+function normalizedTitle(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+export function useImdbRating(
+  movie: Movie | null,
+  enabled = true,
+  includeTrailer = false,
+): ImdbRatingState {
+  const cacheKey = movie
+    ? [
+        "cinemeta",
+        movie.kind === "Series" ? "series" : "movie",
+        movie.imdbId || normalizedTitle(movie.originalTitle || movie.title),
+        movie.year,
+      ]
+    : ["cinemeta", "disabled"];
+  const query = useQuery({
+    queryKey: cacheKey,
+    queryFn: () => {
+      if (!movie) throw new Error("Cannot load an IMDb rating without a movie.");
+      return getImdbMetadata(movie);
+    },
+    enabled: Boolean(movie && enabled && (movie.imdbRating === undefined || includeTrailer)),
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
   });
 
-  useEffect(() => {
-    if (!movie) return;
-    if (movie.imdbRating !== undefined) {
-      setState({ imdbId: movie.imdbId, rating: movie.imdbRating, status: "ready" });
-      return;
-    }
-    if (!enabled) return;
-
-    let active = true;
-    setState({ imdbId: movie.imdbId, status: "loading" });
-
-    getImdbMetadata(movie)
-      .then((metadata) => {
-        if (!active) return;
-        setState({
-          imdbId: metadata?.imdbId || movie.imdbId,
-          rating: metadata?.rating,
-          status: metadata?.rating !== undefined ? "ready" : "empty",
-        });
-      })
-      .catch(() => {
-        if (active) setState({ imdbId: movie.imdbId, status: "error" });
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [enabled, movie?.imdbId, movie?.imdbRating, movie?.kind, movie?.originalTitle, movie?.title, movie?.year]);
-
-  return state;
+  const rating = movie?.imdbRating ?? query.data?.rating;
+  return {
+    imdbId: query.data?.imdbId || movie?.imdbId,
+    rating,
+    trailerId: query.data?.trailerId,
+    status:
+      rating !== undefined
+        ? "ready"
+        : query.isPending
+          ? "loading"
+          : query.isError
+            ? "error"
+            : "empty",
+  };
 }

@@ -9,6 +9,7 @@ import {
   Tv,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { FranchiseSeasonsBar } from "@/components/FranchiseSeasonsBar";
@@ -24,11 +25,12 @@ import { getImdbUrl } from "@/lib/imdb";
 import { cn } from "@/lib/utils";
 import {
   getFranchiseParts,
+  getMoviesByCategory,
+  getMoviesByGenre,
   getMovieDetails,
+  FILTER_OPTIONS,
   type EpisodeItem,
   type EpisodeServer,
-  type FranchisePart,
-  type MovieDetails,
 } from "@/services/movieApi";
 
 const VideoPlayer = lazy(() =>
@@ -39,96 +41,108 @@ export function MovieDetailPage() {
   const { id = "" } = useParams();
   const [searchParams] = useSearchParams();
   const autoPlay = searchParams.get("play") === "true";
-
-  const [movie, setMovie] = useState<MovieDetails | null>(null);
-  const [franchiseParts, setFranchiseParts] = useState<FranchisePart[]>([]);
-  const [error, setError] = useState("");
   const [currentServerIndex, setCurrentServerIndex] = useState(0);
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
   const [copied, setCopied] = useState(false);
 
-  const playerRef = useRef<HTMLDivElement>(null);
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
+  const playerRef = useRef<HTMLDivElement>(null);
+  const getProgressRef = useRef(getProgress);
+  getProgressRef.current = getProgress;
   const [resumePrompt, setResumePrompt] = useState<{ currentTime: number; duration: number } | null>(null);
   const [resumeAtTime, setResumeAtTime] = useState(0);
   const [preferEmbed, setPreferEmbed] = useState(false);
   const lastProgressSaveRef = useRef({ episodeKey: "", currentTime: 0 });
+  const movieQuery = useQuery({
+    queryKey: ["movie-details", id],
+    queryFn: ({ signal }) => getMovieDetails(id, signal),
+    enabled: Boolean(id),
+  });
+  const movie = movieQuery.data ?? null;
+  const franchiseQuery = useQuery({
+    queryKey: ["franchise-parts", movie?.slug],
+    queryFn: ({ signal }) => {
+      if (!movie) throw new Error("Cannot load franchise parts without a movie.");
+      return getFranchiseParts(movie, signal);
+    },
+    enabled: Boolean(movie),
+  });
+  const franchiseParts = franchiseQuery.data ?? [];
+  const recommendationQuery = useQuery({
+    queryKey: ["movie-recommendations", movie?.slug, movie?.genres],
+    queryFn: async ({ signal }) => {
+      if (!movie) throw new Error("Cannot load recommendations without a movie.");
+      const normalize = (value: string) =>
+        value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+      const genre = FILTER_OPTIONS.genres.find((option) =>
+        movie.genres.some((movieGenre) => normalize(movieGenre) === normalize(option.label)),
+      );
+      const candidates = genre && genre.value !== "all"
+        ? await getMoviesByGenre(genre.value, 1, signal)
+        : await getMoviesByCategory(movie.kind === "Series" ? "phim-bo" : "phim-le", 1, signal);
+      return candidates
+        .filter((candidate) => candidate.slug !== movie.slug && candidate.id !== movie.id)
+        .slice(0, 18);
+    },
+    enabled: Boolean(movie),
+  });
+  const recommendations = recommendationQuery.data ?? movie?.recommendations ?? [];
   const imdb = useImdbRating(movie);
+  const paramServer = searchParams.get("server");
+  const paramEp = searchParams.get("ep");
 
   useEffect(() => {
-    const controller = new AbortController();
-    setMovie(null);
-    setFranchiseParts([]);
-    setError("");
+    if (!movie) return;
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
 
-    getMovieDetails(id, controller.signal)
-      .then((data) => {
-        setMovie(data);
+    const progress = getProgressRef.current(id);
+    let serverIndex = 0;
+    let episodeIndex = 0;
+    let wasResumed = false;
 
-        // Fetch related franchise & season parts in background
-        getFranchiseParts(data, controller.signal)
-          .then(setFranchiseParts)
-          .catch(() => setFranchiseParts([]));
+    if (paramServer !== null && paramEp !== null) {
+      serverIndex = Math.max(0, parseInt(paramServer, 10) || 0);
+      episodeIndex = Math.max(0, parseInt(paramEp, 10) || 0);
+      wasResumed = true;
+    } else if (progress) {
+      serverIndex = progress.serverIndex || 0;
+      episodeIndex = progress.episodeIndex || 0;
+      wasResumed = true;
+    }
 
-        // Resume from query param or previous watch history
-        const paramServer = searchParams.get("server");
-        const paramEp = searchParams.get("ep");
-        const progress = getProgress(id);
-
-        let sIdx = 0;
-        let eIdx = 0;
-        let wasResumed = false;
-
-        if (paramServer !== null && paramEp !== null) {
-          sIdx = Math.max(0, parseInt(paramServer, 10) || 0);
-          eIdx = Math.max(0, parseInt(paramEp, 10) || 0);
-          wasResumed = true;
-        } else if (progress) {
-          sIdx = progress.serverIndex || 0;
-          eIdx = progress.episodeIndex || 0;
-          wasResumed = true;
-        }
-
-        if (data.episodes && data.episodes[sIdx]) {
-          setCurrentServerIndex(sIdx);
-          if (data.episodes[sIdx].items[eIdx]) {
-            setCurrentEpisodeIndex(eIdx);
-          }
-        }
-        const selectedEpisode = data.episodes?.[sIdx]?.items?.[eIdx];
-        const hasSavedTime =
-          progress &&
-          progress.serverIndex === sIdx &&
-          progress.episodeIndex === eIdx &&
-          (progress.currentTime ?? 0) > 10 &&
-          (progress.duration ?? 0) > (progress.currentTime ?? 0) + 15;
-        if (selectedEpisode && hasSavedTime) {
-          setResumePrompt({
-            currentTime: progress.currentTime!,
-            duration: progress.duration!,
-          });
-        }
-
-        if (autoPlay || wasResumed) {
-          setTimeout(() => {
-            playerRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 450);
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : "Không tải được thông tin phim.");
-        }
+    if (movie.episodes?.[serverIndex]) {
+      setCurrentServerIndex(serverIndex);
+      if (movie.episodes[serverIndex].items[episodeIndex]) {
+        setCurrentEpisodeIndex(episodeIndex);
+      }
+    }
+    document.title = `${movie.title}${movie.year ? ` (${movie.year})` : ""} - Xem Phim | PhimHub`;
+    const selectedEpisode = movie.episodes?.[serverIndex]?.items?.[episodeIndex];
+    const hasSavedTime =
+      progress &&
+      progress.serverIndex === serverIndex &&
+      progress.episodeIndex === episodeIndex &&
+      (progress.currentTime ?? 0) > 10 &&
+      (progress.duration ?? 0) > (progress.currentTime ?? 0) + 15;
+    if (selectedEpisode && hasSavedTime) {
+      setResumePrompt({
+        currentTime: progress.currentTime!,
+        duration: progress.duration!,
       });
+    }
 
-    return () => controller.abort();
-  }, [id, autoPlay]);
+    if (autoPlay || wasResumed) {
+      const timer = window.setTimeout(() => {
+        playerRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 450);
+      return () => window.clearTimeout(timer);
+    }
+  }, [id, movie, autoPlay, paramServer, paramEp]);
 
   const currentServer = movie?.episodes?.[currentServerIndex];
   const currentEpisode = currentServer?.items?.[currentEpisodeIndex];
@@ -161,15 +175,22 @@ export function MovieDetailPage() {
     lastProgressSaveRef.current = { episodeKey, currentTime };
   }, [movie, currentServer, currentEpisode, currentServerIndex, currentEpisodeIndex, saveProgress]);
 
-  if (error) {
+  if (movieQuery.error && !movie) {
     return (
       <div className="pt-20">
-        <RequestError message={error} />
+        <RequestError
+          message={
+            movieQuery.error instanceof Error
+              ? movieQuery.error.message
+              : "Không tải được thông tin phim."
+          }
+          onRetry={() => void movieQuery.refetch()}
+        />
       </div>
     );
   }
 
-  if (!movie) {
+  if (movieQuery.isLoading || !movie) {
     return (
       <div className="pt-20">
         <LoadingSkeleton rows={1} />
@@ -552,7 +573,7 @@ export function MovieDetailPage() {
           )}
 
           {/* Franchise / Seasons Switcher Bar */}
-          <FranchiseSeasonsBar parts={franchiseParts} className="mt-6" />
+          {franchiseParts.length > 0 && <FranchiseSeasonsBar parts={franchiseParts} className="mt-6" />}
 
           {/* Episode Selector */}
           {currentServer && currentServer.items && currentServer.items.length > 0 && (
@@ -613,10 +634,16 @@ export function MovieDetailPage() {
       </section>
 
       {/* Similar movies recommendations */}
-      {movie.recommendations && movie.recommendations.length > 0 && (
+      {recommendations.length > 0 && (
         <div className="pt-6">
-          <MovieRow title="Phim tương tự" movies={movie.recommendations} />
+          <MovieRow title="Phim tương tự" movies={recommendations} />
         </div>
+      )}
+      {recommendationQuery.error && recommendations.length === 0 && (
+        <RequestError
+          message="Không tải được danh sách phim tương tự."
+          onRetry={() => void recommendationQuery.refetch()}
+        />
       )}
     </main>
   );

@@ -7,16 +7,18 @@ type CinemetaMeta = {
   imdbRating?: string | number;
   name?: string;
   releaseInfo?: string;
+  trailers?: { source?: string; type?: string }[];
   year?: string | number;
 };
 
 type ImdbMetadata = {
   imdbId?: string;
   rating?: number;
+  trailerId?: string;
 };
 
 type CachedRating = {
-  value: ImdbMetadata | undefined;
+  value: ImdbMetadata | null;
   expiresAt: number;
 };
 
@@ -27,7 +29,7 @@ const EMPTY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 
 const ratingCache = new Map<string, CachedRating>();
-const inFlightRatings = new Map<string, Promise<ImdbMetadata | undefined>>();
+const inFlightRatings = new Map<string, Promise<ImdbMetadata | null>>();
 
 function getYear(value?: string | number): number | undefined {
   const match = String(value ?? "").match(/\b(18|19|20|21)\d{2}\b/);
@@ -68,7 +70,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 }
 
-async function fetchMetadata(movie: Movie): Promise<ImdbMetadata | undefined> {
+async function fetchMetadata(movie: Movie): Promise<ImdbMetadata | null> {
   const type = movie.kind === "Series" ? "series" : "movie";
   let imdbId = movie.imdbId;
 
@@ -88,19 +90,23 @@ async function fetchMetadata(movie: Movie): Promise<ImdbMetadata | undefined> {
     }
   }
 
-  if (!imdbId || !IMDB_ID_PATTERN.test(imdbId)) return undefined;
+  if (!imdbId || !IMDB_ID_PATTERN.test(imdbId)) return null;
 
   const metadata = await fetchJson<{ meta?: CinemetaMeta }>(
     `${CINEMETA_BASE_URL}/meta/${type}/${imdbId}.json`,
   );
   const rating = parseImdbRating(metadata.meta?.imdbRating);
+  const trailerId = metadata.meta?.trailers
+    ?.find((trailer) => trailer.type?.toLowerCase() === "trailer" && /^[\w-]{11}$/.test(trailer.source ?? ""))
+    ?.source;
   return {
     imdbId,
     ...(rating !== undefined ? { rating } : {}),
+    ...(trailerId ? { trailerId } : {}),
   };
 }
 
-export function getImdbMetadata(movie: Movie): Promise<ImdbMetadata | undefined> {
+export function getImdbMetadata(movie: Movie): Promise<ImdbMetadata | null> {
   const key = [
     movie.kind === "Series" ? "series" : "movie",
     movie.imdbId || normalizeTitle(movie.originalTitle || movie.title),
