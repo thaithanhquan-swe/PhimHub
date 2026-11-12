@@ -25,6 +25,8 @@ export function Navbar() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [showNavbarSuggestions, setShowNavbarSuggestions] = useState(false);
+  const [isHoveringNavbarSuggestions, setIsHoveringNavbarSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -36,7 +38,21 @@ export function Navbar() {
     enabled: searchFocused && debouncedQuery.length >= 2,
   });
   const suggestions =
-    searchFocused && query.trim() === debouncedQuery ? (suggestionQuery.data ?? []).slice(0, 5) : [];
+    searchFocused && showNavbarSuggestions && query.trim() === debouncedQuery
+      ? (suggestionQuery.data ?? []).slice(0, 5)
+      : [];
+
+  // Tự động ẩn dropdown gợi ý sau khoảng 3, 4 giây nếu người dùng không tương tác
+  useEffect(() => {
+    if (!showNavbarSuggestions || !searchFocused) return;
+    if (isHoveringNavbarSuggestions) return;
+
+    const timer = window.setTimeout(() => {
+      setShowNavbarSuggestions(false);
+    }, 3500);
+
+    return () => window.clearTimeout(timer);
+  }, [showNavbarSuggestions, searchFocused, debouncedQuery, suggestionQuery.data, isHoveringNavbarSuggestions]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -86,6 +102,7 @@ export function Navbar() {
       navigate(`/movie/${selected.slug || selected.id}`);
       setQuery("");
       setSearchFocused(false);
+      setShowNavbarSuggestions(false);
       setActiveSuggestionIndex(-1);
       return;
     }
@@ -93,6 +110,7 @@ export function Navbar() {
       navigate(`/search?q=${encodeURIComponent(value)}`);
       setQuery("");
       setSearchFocused(false);
+      setShowNavbarSuggestions(false);
     }
   }
 
@@ -235,20 +253,34 @@ export function Navbar() {
               <input
                 value={query}
                 onChange={(event) => {
-                  setQuery(event.target.value);
+                  const val = event.target.value;
+                  setQuery(val);
                   setActiveSuggestionIndex(-1);
+                  if (val.trim().length >= 2) {
+                    setShowNavbarSuggestions(true);
+                  } else {
+                    setShowNavbarSuggestions(false);
+                  }
                 }}
-                onFocus={() => setSearchFocused(true)}
+                onFocus={() => {
+                  setSearchFocused(true);
+                  if (query.trim().length >= 2) {
+                    setShowNavbarSuggestions(true);
+                  }
+                }}
                 onBlur={() => setSearchFocused(false)}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown" && suggestions.length > 0) {
                     event.preventDefault();
+                    setShowNavbarSuggestions(true);
                     setActiveSuggestionIndex((index) => (index + 1) % suggestions.length);
                   } else if (event.key === "ArrowUp" && suggestions.length > 0) {
                     event.preventDefault();
+                    setShowNavbarSuggestions(true);
                     setActiveSuggestionIndex((index) => (index <= 0 ? suggestions.length - 1 : index - 1));
                   } else if (event.key === "Escape") {
                     setSearchFocused(false);
+                    setShowNavbarSuggestions(false);
                     setActiveSuggestionIndex(-1);
                   }
                 }}
@@ -263,7 +295,10 @@ export function Navbar() {
               {query && (
                 <button
                   type="button"
-                  onClick={() => setQuery("")}
+                  onClick={() => {
+                    setQuery("");
+                    setShowNavbarSuggestions(false);
+                  }}
                   className="grid size-5 place-items-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
                   aria-label="Xóa từ khóa"
                 >
@@ -276,7 +311,9 @@ export function Navbar() {
                 id="navbar-search-suggestions"
                 role="listbox"
                 aria-label="Gợi ý phim"
-                className="absolute right-0 top-full z-[60] mt-2 w-[min(90vw,26rem)] overflow-hidden rounded-xl border border-white/10 bg-[#181818] p-1.5 shadow-2xl"
+                onMouseEnter={() => setIsHoveringNavbarSuggestions(true)}
+                onMouseLeave={() => setIsHoveringNavbarSuggestions(false)}
+                className="absolute right-0 top-full z-[60] mt-2 w-[min(90vw,26rem)] overflow-hidden rounded-xl border border-white/10 bg-[#181818] p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200"
               >
                 {suggestions.map((movie, index) => (
                   <li key={movie.id || movie.slug} role="option" aria-selected={index === activeSuggestionIndex}>
