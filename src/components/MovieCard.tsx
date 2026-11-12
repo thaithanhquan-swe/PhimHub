@@ -1,5 +1,5 @@
 import { Bookmark, BookmarkCheck, Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -8,33 +8,10 @@ import { useImdbRating } from "@/hooks/useImdbRating";
 import { getImdbUrl } from "@/lib/imdb";
 
 export function MovieCard({ movie }: { movie: Movie }) {
-  const cardRef = useRef<HTMLElement>(null);
   const [shouldLoadImdb, setShouldLoadImdb] = useState(false);
   const { movies, toggle } = useWatchlist();
   const saved = movies.some((item) => item.id === movie.id || item.slug === movie.slug);
   const movieId = movie.slug || movie.id;
-  const imdb = useImdbRating(movie, shouldLoadImdb);
-
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    if (!("IntersectionObserver" in window)) {
-      setShouldLoadImdb(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setShouldLoadImdb(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" },
-    );
-    observer.observe(card);
-    return () => observer.disconnect();
-  }, []);
 
   const displayEpisode =
     movie.currentEpisode &&
@@ -44,9 +21,9 @@ export function MovieCard({ movie }: { movie: Movie }) {
       : null;
 
   return (
-    <article ref={cardRef} className="movie-card group relative flex flex-col select-none">
+    <article className="movie-card group relative flex flex-col select-none">
       {/* Poster Container */}
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[#1e1e1e] border border-white/5 transition-colors duration-200 group-hover:border-white/20">
+      <div className="group/poster relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[#1e1e1e] border border-white/5 transition-colors duration-200 group-hover:border-white/20">
         <Link
           to={`/movie/${movieId}`}
           className="absolute inset-0 block outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -58,13 +35,15 @@ export function MovieCard({ movie }: { movie: Movie }) {
             loading="lazy"
             decoding="async"
             draggable={false}
+            onLoad={() => setShouldLoadImdb(true)}
             onError={(e) => {
               const target = e.currentTarget;
+              setShouldLoadImdb(true);
               if (movie.backdropUrl && target.src !== movie.backdropUrl) {
                 target.src = movie.backdropUrl;
               }
             }}
-            className="size-full object-cover pointer-events-none select-none"
+            className="size-full object-cover pointer-events-none select-none transition-transform duration-300 group-hover/poster:scale-105"
           />
 
           {/* Ambient subtle vignette */}
@@ -81,6 +60,14 @@ export function MovieCard({ movie }: { movie: Movie }) {
           <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40">
             <span className="grid size-10 place-items-center rounded-full bg-primary text-white shadow-xl">
               <Play className="size-4 fill-current ml-0.5" />
+            </span>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 translate-y-1 bg-gradient-to-t from-black via-black/90 to-transparent px-2.5 pb-2.5 pt-8 opacity-0 transition-all duration-200 group-hover/poster:translate-y-0 group-hover/poster:opacity-100 group-focus-within/poster:translate-y-0 group-focus-within/poster:opacity-100">
+            <p className="line-clamp-3 text-left text-[10px] leading-4 text-white/85 sm:text-xs">
+              {movie.description}
+            </p>
+            <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-white">
+              <Play className="size-3 fill-current text-primary" /> Xem chi tiết
             </span>
           </div>
         </Link>
@@ -136,19 +123,8 @@ export function MovieCard({ movie }: { movie: Movie }) {
             </>
           )}
         </div>
-        {imdb.rating !== undefined ? (
-          <a
-            href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Xem điểm IMDb của ${movie.title}`}
-            title="Mở trang IMDb"
-            className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
-          >
-            <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
-            <span>{imdb.rating.toFixed(1)}/10</span>
-            <span aria-hidden="true">↗</span>
-          </a>
+        {movie.imdbRating !== undefined || shouldLoadImdb ? (
+          <MovieRating movie={movie} />
         ) : (
           <span className="mt-1 w-fit text-[10px] font-semibold text-white/60 sm:text-[11px]">
             {movie.kind}
@@ -156,5 +132,25 @@ export function MovieCard({ movie }: { movie: Movie }) {
         )}
       </div>
     </article>
+  );
+}
+
+function MovieRating({ movie }: { movie: Movie }) {
+  const imdb = useImdbRating(movie);
+  if (imdb.rating === undefined) return null;
+
+  return (
+    <a
+      href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Xem điểm IMDb của ${movie.title}`}
+      title="Mở trang IMDb"
+      className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
+    >
+      <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
+      <span>{imdb.rating.toFixed(1)}/10</span>
+      <span aria-hidden="true">↗</span>
+    </a>
   );
 }

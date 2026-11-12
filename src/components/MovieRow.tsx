@@ -5,6 +5,9 @@ import { MovieCard } from "@/components/MovieCard";
 import type { Movie } from "@/data/movies";
 import { cn } from "@/lib/utils";
 
+const INITIAL_VISIBLE_MOVIES = 6;
+const MOVIES_PER_BATCH = 6;
+
 export function MovieRow({
   title,
   movies,
@@ -13,6 +16,7 @@ export function MovieRow({
   movies: Movie[];
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const isDownRef = useRef(false);
   const startXRef = useRef(0);
   const scrollLeftRef = useRef(0);
@@ -21,6 +25,29 @@ export function MovieRow({
   const [isDragging, setIsDragging] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [hasEnteredViewport, setHasEnteredViewport] = useState(false);
+  const [visibleMovieCount, setVisibleMovieCount] = useState(INITIAL_VISIBLE_MOVIES);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    if (!("IntersectionObserver" in window)) {
+      setHasEnteredViewport(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasEnteredViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   const updateScrollButtons = useCallback(() => {
     const el = rowRef.current;
@@ -33,7 +60,7 @@ export function MovieRow({
     updateScrollButtons();
     window.addEventListener("resize", updateScrollButtons);
     return () => window.removeEventListener("resize", updateScrollButtons);
-  }, [updateScrollButtons, movies]);
+  }, [updateScrollButtons, movies, visibleMovieCount]);
 
   if (!movies.length) return null;
 
@@ -46,6 +73,18 @@ export function MovieRow({
       behavior: "smooth",
     });
     setTimeout(updateScrollButtons, 350);
+  }
+
+  function handleScroll() {
+    const el = rowRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    if (
+      visibleMovieCount < movies.length &&
+      el.scrollLeft + el.clientWidth >= el.scrollWidth - el.clientWidth
+    ) {
+      setVisibleMovieCount((count) => Math.min(count + MOVIES_PER_BATCH, movies.length));
+    }
   }
 
   // Mouse drag-to-scroll handlers (for desktop mouse only, avoiding touch jitter)
@@ -93,7 +132,7 @@ export function MovieRow({
   }
 
   return (
-    <section className="group/row relative mb-8 sm:mb-10">
+    <section ref={sectionRef} className="group/row relative mb-8 sm:mb-10">
       {/* Row Header */}
       <div className="mb-3 flex items-center justify-between px-4 sm:px-[4.5%]">
         <h2 className="font-display text-base font-semibold sm:text-xl text-white">{title}</h2>
@@ -118,23 +157,38 @@ export function MovieRow({
         </button>
 
         {/* Scrollable & Draggable Movie Cards Grid */}
-        <div
-          ref={rowRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUpOrLeave}
-          onMouseLeave={handleMouseUpOrLeave}
-          onClickCapture={handleClickCapture}
-          onScroll={updateScrollButtons}
-          className={cn(
-            "hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]",
-            isDragging ? "cursor-grabbing select-none" : "cursor-grab",
-          )}
-        >
-          {movies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} />
-          ))}
-        </div>
+        {hasEnteredViewport ? (
+          <div
+            ref={rowRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            onClickCapture={handleClickCapture}
+            onScroll={handleScroll}
+            className={cn(
+              "hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]",
+              isDragging ? "cursor-grabbing select-none" : "cursor-grab",
+            )}
+          >
+            {movies.slice(0, visibleMovieCount).map((movie) => (
+              <MovieCard key={movie.id} movie={movie} />
+            ))}
+          </div>
+        ) : (
+          <div
+            aria-hidden="true"
+            className="hide-scrollbar grid grid-flow-col auto-cols-[36vw] xs:auto-cols-[30vw] gap-2.5 overflow-hidden px-4 pb-2 sm:auto-cols-[19vw] sm:gap-3 sm:px-[4.5%] lg:auto-cols-[15vw] xl:auto-cols-[12.5vw]"
+          >
+            {movies.slice(0, INITIAL_VISIBLE_MOVIES).map((movie) => (
+              <div key={movie.id} className="space-y-2">
+                <div className="aspect-[2/3] animate-pulse rounded-md bg-white/[0.08]" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-white/[0.08]" />
+                <div className="h-2.5 w-1/2 animate-pulse rounded bg-white/[0.06]" />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Right Arrow Button (desktop hover) */}
         <button
