@@ -46,6 +46,7 @@ interface TrailerBackgroundProps {
   imageClassName?: string;
   priority?: "high" | "auto";
   isActive?: boolean;
+  onEnded?: () => void;
 }
 
 export function TrailerBackground({
@@ -56,8 +57,10 @@ export function TrailerBackground({
   imageClassName,
   priority = "auto",
   isActive = true,
+  onEnded,
 }: TrailerBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -99,6 +102,34 @@ export function TrailerBackground({
     setIsVideoLoaded(false);
   }, [parsedTrailer?.type === "youtube" ? parsedTrailer.id : parsedTrailer?.type === "video" ? parsedTrailer.url : null]);
 
+  // Listen for YouTube postMessage API events (onStateChange: 0 means video ENDED)
+  useEffect(() => {
+    if (!isActive || parsedTrailer?.type !== "youtube") return;
+
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        // YouTube PlayerState: 0 = ENDED
+        if (data?.event === "onStateChange" && data?.info === 0) {
+          if (onEnded) {
+            onEnded();
+          } else if (iframeRef.current?.contentWindow) {
+            // If no onEnded callback (e.g. detail page), replay seamlessly without playlist buttons
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+              "*",
+            );
+          }
+        }
+      } catch {
+        // Ignore non-JSON postMessage from third-party scripts or extensions
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isActive, parsedTrailer, onEnded]);
+
   // Calculate exact scaled 16:9 dimensions:
   // Scale factor (1.35x) crops ~17.5% from top and bottom, pushing YouTube title bar and watermark outside the container!
   const videoStyle = useMemo(() => {
@@ -115,6 +146,7 @@ export function TrailerBackground({
         minWidth: "140%",
         minHeight: "140%",
         transform: "translate(-50%, -50%) scale(1.35)",
+        pointerEvents: "none" as const,
       };
     }
 
@@ -139,10 +171,14 @@ export function TrailerBackground({
       transform: "translate(-50%, -50%)",
       maxWidth: "none",
       maxHeight: "none",
+      pointerEvents: "none" as const,
     };
   }, [dims]);
 
   const shouldRenderVideo = Boolean(isActive && parsedTrailer && !prefersReducedMotion);
+
+  // Origin for YouTube enablejsapi communication
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   return (
     <div
@@ -166,10 +202,11 @@ export function TrailerBackground({
             <video
               src={parsedTrailer.url}
               autoPlay
-              loop
+              loop={!onEnded}
               muted
               playsInline
               onLoadedData={() => setIsVideoLoaded(true)}
+              onEnded={() => onEnded?.()}
               className={cn(
                 "absolute inset-0 size-full object-cover object-center pointer-events-none transition-opacity duration-1000",
                 isVideoLoaded ? "opacity-100" : "opacity-0",
@@ -177,13 +214,14 @@ export function TrailerBackground({
             />
           ) : (
             <iframe
+              ref={iframeRef}
               key={parsedTrailer.id}
-              src={`https://www.youtube-nocookie.com/embed/${parsedTrailer.id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${parsedTrailer.id}&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&showinfo=0&vq=hd1080`}
+              // Notice: NO playlist parameter (which removes |<<, ||, >>| buttons), enablejsapi=1 enables ENDED detection
+              src={`https://www.youtube-nocookie.com/embed/${parsedTrailer.id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&showinfo=0&vq=hd1080&enablejsapi=1&origin=${encodeURIComponent(origin)}`}
               title={`Trailer ${title}`}
               allow="autoplay; encrypted-media; picture-in-picture"
               tabIndex={-1}
               onLoad={() => {
-                // Short timer ensures video frame has started before fading in
                 setTimeout(() => setIsVideoLoaded(true), 400);
               }}
               style={videoStyle}
@@ -193,6 +231,9 @@ export function TrailerBackground({
               )}
             />
           )}
+
+          {/* Physical click & interaction shield over video to prevent YouTube popups */}
+          <div className="absolute inset-0 size-full pointer-events-none z-10" />
         </div>
       )}
     </div>
