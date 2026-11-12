@@ -24,6 +24,8 @@ export type Movie = {
   totalEpisodes?: number;
   director?: string;
   casts?: string;
+  trailerUrl?: string;
+  trailerId?: string;
 };
 
 export type EpisodeItem = {

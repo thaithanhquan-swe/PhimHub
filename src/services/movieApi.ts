@@ -280,6 +280,7 @@ type PhimApiItem = {
     rating?: string | number | null;
   };
   imdb_rating?: string | number | null;
+  trailer_url?: string | null;
 };
 
 type PhimApiListResponse = {
@@ -449,6 +450,7 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
     imdbId,
     imdbUrl,
     imdbRating,
+    trailerUrl: item.trailer_url?.trim() || undefined,
   };
 }
 
@@ -746,6 +748,7 @@ export async function getMovieDetails(slug: string, signal?: AbortSignal): Promi
         countries,
         episodes,
         recommendations: [],
+        trailerUrl: raw.trailer_url?.trim() || baseMovie.trailerUrl,
       };
     } else {
       const data = await fetchJson<NguonCDetailResponse>(`https://phim.nguonc.com/api/film/${slug}`, signal);
