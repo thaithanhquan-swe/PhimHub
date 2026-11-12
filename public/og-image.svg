@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#242126" />
+      <stop offset="1" stop-color="#101012" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FF334B" />
+      <stop offset="1" stop-color="#E50914" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(489 0 0 380 1064 120)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E50914" stop-opacity=".38" />
+      <stop offset="1" stop-color="#E50914" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <path fill="url(#background)" d="M0 0h1200v630H0z" />
+  <path fill="url(#glow)" d="M0 0h1200v630H0z" />
+  <circle cx="1040" cy="310" r="182" fill="#171719" stroke="#fff" stroke-opacity=".09" stroke-width="2" />
+  <circle cx="1040" cy="310" r="143" fill="url(#accent)" />
+  <path d="M1001 230v160l130-80-130-80Z" fill="#fff" />
+  <path d="M106 111h52v-23h47v23h54v-23h47v23h54v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h47v-23h47v23h24" stroke="#fff" stroke-opacity=".12" stroke-width="3" />
+  <rect x="105" y="218" width="72" height="72" rx="20" fill="url(#accent)" />
+  <path d="M134 234v40l32-20-32-20Z" fill="#fff" />
+  <text x="198" y="274" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="800" letter-spacing="-2">Phim</text>
+  <text x="321" y="274" fill="#E50914" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="800" letter-spacing="-2">Hub</text>
+  <text x="106" y="366" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700">Cả thế giới phim</text>
+  <text x="106" y="425" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700">trong tầm tay</text>
+  <text x="109" y="478" fill="#fff" fill-opacity=".66" font-family="Arial, Helvetica, sans-serif" font-size="21">Khám phá phim mới · Tiếp tục xem · Lưu phim yêu thích</text>
+  <rect x="106" y="525" width="150" height="5" rx="2.5" fill="#E50914" />
+</svg>
