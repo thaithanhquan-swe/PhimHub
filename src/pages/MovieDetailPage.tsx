@@ -8,7 +8,7 @@ import {
   Share2,
   Tv,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { FranchiseSeasonsBar } from "@/components/FranchiseSeasonsBar";
@@ -16,7 +16,6 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieRow } from "@/components/MovieRow";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { RequestError } from "@/components/RequestState";
-import { VideoPlayer } from "@/components/VideoPlayer";
 import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl, getPosterUrl } from "@/data/movies";
@@ -29,6 +28,10 @@ import {
   type FranchisePart,
   type MovieDetails,
 } from "@/services/movieApi";
+
+const VideoPlayer = lazy(() =>
+  import("@/components/VideoPlayer").then(({ VideoPlayer }) => ({ default: VideoPlayer })),
+);
 
 export function MovieDetailPage() {
   const { id = "" } = useParams();
@@ -417,20 +420,22 @@ export function MovieDetailPage() {
           {hasEpisodes && currentEpisode ? (
             <div>
               <div className="relative">
-                <VideoPlayer
-                  key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${resumeAtTime}`}
-                  m3u8Url={currentEpisode.m3u8}
-                  embedUrl={currentEpisode.embed}
-                  title={movie.title}
-                  episodeName={currentEpisode.name}
-                  poster={getBackdropUrl(movie)}
-                  autoPlay={!resumePrompt}
-                  initialTime={resumeAtTime}
-                  hasNextEpisode={hasNextEpisode}
-                  onNextEpisode={handleNextEpisode}
-                  onTimeUpdate={handleProgressUpdate}
-                  preferEmbed={preferEmbed}
-                />
+                <Suspense fallback={<div className="aspect-video w-full animate-pulse rounded-md bg-white/10" />}>
+                  <VideoPlayer
+                    key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${resumeAtTime}`}
+                    m3u8Url={currentEpisode.m3u8}
+                    embedUrl={currentEpisode.embed}
+                    title={movie.title}
+                    episodeName={currentEpisode.name}
+                    poster={getBackdropUrl(movie)}
+                    autoPlay={!resumePrompt}
+                    initialTime={resumeAtTime}
+                    hasNextEpisode={hasNextEpisode}
+                    onNextEpisode={handleNextEpisode}
+                    onTimeUpdate={handleProgressUpdate}
+                    preferEmbed={preferEmbed}
+                  />
+                </Suspense>
                 {resumePrompt && (
                   <div
                     role="dialog"
