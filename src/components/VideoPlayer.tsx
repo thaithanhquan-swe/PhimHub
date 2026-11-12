@@ -89,7 +89,7 @@ export function VideoPlayer({
       const saved = localStorage.getItem("phimhub_player_volume");
       if (saved) {
         const num = Number(saved);
-        if (Number.isFinite(num) && num >= 0 && num <= 2) {
+        if (Number.isFinite(num) && num >= 0 && num <= 1) {
           return num;
         }
       }
@@ -97,6 +97,20 @@ export function VideoPlayer({
       // Ignore
     }
     return 1;
+  });
+  const [audioBoostFactor, setAudioBoostFactor] = useState(() => {
+    try {
+      const saved = localStorage.getItem("phimhub_audio_boost");
+      if (saved) {
+        const num = Number(saved);
+        if (Number.isFinite(num) && num >= 1 && num <= 2.5) {
+          return num;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    return 1.8; // Mặc định tăng âm lên 1.8x (+5.1 dB) để âm lượng 100% to rõ mà không vỡ tiếng
   });
   const [isMuted, setIsMuted] = useState(false);
   const [canAdjustVolume, setCanAdjustVolume] = useState(true);
@@ -756,11 +770,11 @@ export function VideoPlayer({
           break;
         case "arrowup":
           e.preventDefault();
-          changeVolume(Math.min(2, Math.round((volume + 0.1) * 10) / 10), true);
+          changeVolume(Math.min(1, Math.round((volume + 0.05) * 100) / 100), true);
           break;
         case "arrowdown":
           e.preventDefault();
-          changeVolume(Math.max(0, Math.round((volume - 0.1) * 10) / 10), true);
+          changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100), true);
           break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
@@ -775,7 +789,7 @@ export function VideoPlayer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation]);
 
-  // Web Audio Context & GainNode for Audio Amplification (up to 200%)
+  // Web Audio Context & GainNode for Audio Amplification (keeps bar at 100% while sound is much louder)
   const initAudioGain = useCallback(() => {
     const video = videoRef.current;
     if (!video) return null;
@@ -799,12 +813,15 @@ export function VideoPlayer({
       const gain = ctx.createGain();
       const compressor = ctx.createDynamicsCompressor();
 
-      // Soft limiter/compressor prevents loud peaks from clipping/distorting when boosted up to 200%
-      compressor.threshold.value = -4;
-      compressor.knee.value = 25;
-      compressor.ratio.value = 10;
+      // Soft limiter/compressor prevents loud peaks from clipping/distorting when sound is amplified
+      compressor.threshold.value = -6;
+      compressor.knee.value = 20;
+      compressor.ratio.value = 8;
       compressor.attack.value = 0.003;
       compressor.release.value = 0.25;
+
+      // Amplify the baseline audio stream (e.g. 1.8x / +5.1 dB)
+      gain.gain.value = audioBoostFactor;
 
       source.connect(gain);
       gain.connect(compressor);
@@ -823,7 +840,25 @@ export function VideoPlayer({
       console.warn("AudioContext boost initialization:", err);
       return null;
     }
-  }, []);
+  }, [audioBoostFactor]);
+
+  const setBoostLevel = (level: number) => {
+    setAudioBoostFactor(level);
+    const gainNode = initAudioGain();
+    if (gainNode) {
+      gainNode.gain.value = level;
+    }
+    try {
+      localStorage.setItem("phimhub_audio_boost", String(level));
+    } catch {
+      // Ignore
+    }
+    triggerToast(
+      level > 1
+        ? `Đã bật tăng âm: ${Math.round(level * 100)}%`
+        : "Âm thanh: Tiêu chuẩn (100%)",
+    );
+  };
 
   useEffect(() => {
     return () => {
@@ -880,13 +915,11 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // Clamp between 0 and 2.0 (0% - 200%)
-    const clampedVol = Math.max(0, Math.min(2, Math.round(newVol * 100) / 100));
+    // Standard volume range: 0.0 - 1.0 (0% - 100%)
+    const clampedVol = Math.max(0, Math.min(1, Math.round(newVol * 100) / 100));
 
-    // HTML5 video element only supports 0.0 - 1.0. If clampedVol > 1, video.volume is 1.0 and Web Audio amplifies the rest!
-    const nativeVol = Math.min(1, clampedVol);
     try {
-      video.volume = nativeVol;
+      video.volume = clampedVol;
     } catch {
       // Ignore read-only volume on iOS Safari
     }
@@ -897,12 +930,11 @@ export function VideoPlayer({
       if (audioCtxRef.current?.state === "suspended") {
         audioCtxRef.current.resume().catch(() => {});
       }
-      // gainNode boosts beyond 1.0 (e.g. 1.25x, 1.5x, 2.0x)
-      gainNode.gain.value = Math.max(1, clampedVol);
+      gainNode.gain.value = audioBoostFactor;
     }
 
     const appliedVolume = video.volume;
-    const volumeWasApplied = Math.abs(appliedVolume - nativeVol) < 0.02 || Boolean(gainNode);
+    const volumeWasApplied = Math.abs(appliedVolume - clampedVol) < 0.02 || Boolean(gainNode);
     setCanAdjustVolume(volumeWasApplied);
     setVolume(clampedVol);
 
@@ -918,7 +950,7 @@ export function VideoPlayer({
     }
 
     if (showToast) {
-      triggerToast(`Âm lượng: ${Math.round(clampedVol * 100)}%${clampedVol > 1 ? " (Khuếch đại 🔥)" : ""}`);
+      triggerToast(`Âm lượng: ${Math.round(clampedVol * 100)}%`);
     }
   }
 
@@ -1301,52 +1333,44 @@ export function VideoPlayer({
                 )}
               </button>
 
-              {/* Desktop volume slider (Range 0 - 200%) */}
+              {/* Desktop volume slider (Range 0 - 100%) */}
               <div
                 className={cn(
                   "h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out",
-                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-32 group-hover/vol:px-1.5",
+                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-20 group-hover/vol:px-1.5",
                 )}
               >
                 <input
                   type="range"
                   min="0"
-                  max="2"
-                  step="0.05"
+                  max="1"
+                  step="0.01"
                   value={isMuted ? 0 : volume}
                   onChange={(event) => changeVolume(Number(event.currentTarget.value))}
                   aria-label="Âm lượng video"
-                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%${volume > 1 ? " (Khuếch đại 🔥)" : ""}`}
+                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
                   className="h-4 w-full cursor-pointer accent-primary"
                   disabled={!canAdjustVolume}
                 />
-                {volume > 1 && !isMuted && (
-                  <span
-                    className="ml-1.5 text-[10px] font-extrabold text-primary select-none shrink-0"
-                    title="Đang khuếch đại âm lượng"
-                  >
-                    {Math.round(volume * 100)}%
-                  </span>
-                )}
               </div>
 
-              {/* Mobile volume popover with Boost Presets */}
+              {/* Mobile volume popover */}
               {isTouchDevice && isVolumeSliderOpen && (
                 <div
                   id="mobile-volume-slider"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-60 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150"
+                  className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs">
                     <span className="font-semibold text-white">Âm lượng</span>
-                    <span className={cn("font-bold", volume > 1 ? "text-primary" : "text-white/60")}>
-                      {Math.round((isMuted ? 0 : volume) * 100)}% {volume > 1 && "(Khuếch đại 🔥)"}
+                    <span className="font-bold text-white/70">
+                      {Math.round((isMuted ? 0 : volume) * 100)}%
                     </span>
                   </div>
                   <input
                     type="range"
                     min="0"
-                    max="2"
-                    step="0.05"
+                    max="1"
+                    step="0.01"
                     value={isMuted ? 0 : volume}
                     onChange={(event) => changeVolume(Number(event.currentTarget.value))}
                     aria-label="Âm lượng video"
@@ -1354,9 +1378,9 @@ export function VideoPlayer({
                     disabled={!canAdjustVolume}
                   />
 
-                  {/* Quick Volume Boost Presets */}
+                  {/* Quick Volume Presets (25%, 50%, 75%, 100%) */}
                   <div className="mt-2 mb-2 flex items-center gap-1.5">
-                    {[1.0, 1.25, 1.5, 2.0].map((v) => (
+                    {[0.25, 0.5, 0.75, 1.0].map((v) => (
                       <button
                         key={v}
                         type="button"
@@ -1368,7 +1392,7 @@ export function VideoPlayer({
                             : "bg-white/10 text-white/80 hover:bg-white/20 active:scale-95",
                         )}
                       >
-                        {Math.round(v * 100)}%{v > 1 ? "🔥" : ""}
+                        {Math.round(v * 100)}%
                       </button>
                     ))}
                   </div>
@@ -1488,11 +1512,11 @@ export function VideoPlayer({
                       >
                         <span className="flex items-center gap-2">
                           <Volume2 className="size-4 text-white/70" />
-                          <span>Khuếch đại âm lượng</span>
+                          <span>Tăng cường âm thanh</span>
                         </span>
                         <span className="flex items-center gap-1 text-white/60">
-                          <span className={volume > 1 ? "text-primary font-bold" : ""}>
-                            {Math.round(volume * 100)}% {volume > 1 && "🔥"}
+                          <span className={audioBoostFactor > 1 ? "text-primary font-bold" : ""}>
+                            {audioBoostFactor === 1.8 ? "To rõ (1.8x)" : audioBoostFactor === 1 ? "Chuẩn" : `${audioBoostFactor}x`}
                           </span>
                           <ChevronRight className="size-3.5" />
                         </span>
@@ -1606,32 +1630,32 @@ export function VideoPlayer({
                         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
                       >
                         <ChevronRight className="size-3.5 rotate-180" />
-                        <span>Khuếch đại âm lượng</span>
+                        <span>Tăng cường âm thanh</span>
                       </button>
                       <p className="px-3 py-1 text-[11px] leading-relaxed text-white/50">
-                        Khuếch đại âm thanh to hơn mức 100% tiêu chuẩn, tích hợp bộ chống rè và méo tiếng.
+                        Tăng âm lượng thực tế của phim to hơn mà thanh trượt vẫn ở mức 100% chuẩn, tự động chống rè/méo tiếng.
                       </p>
                       {[
-                        { val: 1.0, label: "100% (Mặc định)" },
-                        { val: 1.25, label: "125% (Tăng nhẹ +25%)" },
-                        { val: 1.5, label: "150% (To rõ +50%)" },
-                        { val: 1.75, label: "175% (Rất to +75%)" },
-                        { val: 2.0, label: "200% (Cực đại 2x 🔥)" },
+                        { val: 1.0, label: "Tiêu chuẩn (1.0x)" },
+                        { val: 1.4, label: "To vừa (+40%)" },
+                        { val: 1.8, label: "To rõ (+80% - Khuyên dùng)" },
+                        { val: 2.2, label: "Rất to (+120%)" },
+                        { val: 2.5, label: "Cực đại (+150% 🔥)" },
                       ].map(({ val, label }) => (
                         <button
                           key={val}
                           type="button"
                           onClick={() => {
-                            changeVolume(val, true);
+                            setBoostLevel(val);
                             setIsSettingsOpen(false);
                           }}
                           className={cn(
                             "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
-                            volume === val ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
+                            audioBoostFactor === val ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
                           )}
                         >
                           <span>{label}</span>
-                          {volume === val && <Check className="size-3.5" />}
+                          {audioBoostFactor === val && <Check className="size-3.5" />}
                         </button>
                       ))}
                     </div>
