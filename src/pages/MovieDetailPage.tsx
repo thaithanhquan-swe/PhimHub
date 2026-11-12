@@ -2,10 +2,12 @@ import {
   ArrowLeft,
   Bookmark,
   BookmarkCheck,
+  ExternalLink,
   Film,
   History,
   Play,
   Share2,
+  Star,
   Tv,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -311,10 +313,18 @@ export function MovieDetailPage() {
                   href={getImdbUrl({ ...movie, imdbId: imdb.imdbId })}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="Mở trang IMDb"
-                  className="inline-flex items-center gap-1.5 rounded bg-[#f5c518] px-2 py-1 text-[11px] font-bold text-black hover:bg-[#ffda44]"
+                  title="Xem đánh giá trên IMDb"
+                  className="group inline-flex items-center gap-1.5 rounded-md bg-white/10 hover:bg-white/15 border border-white/15 hover:border-[#f5c518]/60 px-2 py-0.5 text-xs font-semibold text-white transition-all shadow-sm active:scale-95"
                 >
-                  IMDb ↗ <span className="font-semibold">{imdb.rating.toFixed(1)}/10</span>
+                  <span className="rounded bg-[#f5c518] px-1.5 py-0.5 text-[9px] font-black tracking-tight text-black leading-none shadow-xs">
+                    IMDb
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Star className="size-3.5 fill-[#f5c518] text-[#f5c518]" />
+                    <span className="font-bold text-white">{imdb.rating.toFixed(1)}</span>
+                    <span className="text-[10px] text-white/50 font-normal">/10</span>
+                  </span>
+                  <ExternalLink className="size-3 text-white/40 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#f5c518]" />
                 </a>
               ) : (
                 <span className="rounded bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/80">

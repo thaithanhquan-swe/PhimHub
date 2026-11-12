@@ -1,4 +1,4 @@
-import { Bookmark, BookmarkCheck, Play } from "lucide-react";
+import { Bookmark, BookmarkCheck, ExternalLink, Play, Star } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -158,11 +158,16 @@ function MovieRating({ movie }: { movie: Movie }) {
       rel="noopener noreferrer"
       aria-label={`Xem điểm IMDb của ${movie.title}`}
       title="Mở trang IMDb"
-      className="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px]"
+      className="group mt-1 inline-flex w-fit items-center gap-1.5 text-[10px] font-semibold text-amber-300 hover:text-amber-200 sm:text-[11px] transition-colors"
     >
-      <span className="rounded bg-[#f5c518] px-1 text-[9px] font-black text-black">IMDb</span>
-      <span>{imdb.rating.toFixed(1)}/10</span>
-      <span aria-hidden="true">↗</span>
+      <span className="rounded bg-[#f5c518] px-1 py-0.5 text-[9px] font-black text-black leading-none shadow-xs">
+        IMDb
+      </span>
+      <span className="inline-flex items-center gap-0.5 font-bold text-white/95">
+        <Star className="size-3 fill-[#f5c518] text-[#f5c518]" />
+        <span>{imdb.rating.toFixed(1)}/10</span>
+      </span>
+      <ExternalLink className="size-2.5 text-white/40 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-amber-300" />
     </a>
   );
 }
