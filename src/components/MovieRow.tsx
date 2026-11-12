@@ -145,10 +145,13 @@ export function MovieRow({
   }
 
   return (
-    <section ref={sectionRef} className="group/row relative mb-8 sm:mb-10">
+    <section ref={sectionRef} className="group/row relative mb-8 sm:mb-12">
       {/* Row Header */}
-      <div className="mb-3 flex items-center justify-between px-4 sm:px-[4.5%]">
-        <h2 className="font-display text-base font-semibold sm:text-xl text-white">{title}</h2>
+      <div className="mb-3.5 sm:mb-4 flex items-center justify-between px-4 sm:px-[4.5%]">
+        <div className="flex items-center gap-2.5">
+          <span className="h-5 sm:h-6 w-1 rounded-full bg-primary" />
+          <h2 className="font-display text-lg font-bold sm:text-2xl text-white tracking-tight">{title}</h2>
+        </div>
       </div>
 
       {/* Main Row Container with middle navigation buttons & drag support */}
@@ -160,16 +163,16 @@ export function MovieRow({
           disabled={!canScrollLeft}
           aria-label={`Cuộn ${title} sang trái`}
           className={cn(
-            "hidden sm:grid absolute left-1 sm:left-3 top-[40%] -translate-y-1/2 z-30 size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute left-1 sm:left-3 top-[40%] -translate-y-1/2 z-30 size-11 sm:size-13 place-items-center rounded-full bg-black/85 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollLeft
               ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >
-          <ChevronLeft className="size-6 -ml-0.5 text-white" />
+          <ChevronLeft className="size-6 sm:size-7 -ml-0.5 text-white" />
         </button>
 
-        {/* Scrollable & Draggable Movie Cards Grid */}
+        {/* Scrollable & Draggable Movie Cards Grid (Roomier card sizes, ~5-6 cards across on desktop) */}
         {hasEnteredViewport ? (
           <div
             ref={rowRef}
@@ -180,7 +183,7 @@ export function MovieRow({
             onClickCapture={handleClickCapture}
             onScroll={handleScroll}
             className={cn(
-              "hide-scrollbar grid grid-flow-col auto-cols-[38vw] xs:auto-cols-[30vw] gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[20vw] sm:gap-3 sm:px-[4.5%] md:auto-cols-[16.5vw] lg:auto-cols-[14vw] xl:auto-cols-[12.5vw] 2xl:auto-cols-[11vw]",
+              "hide-scrollbar grid grid-flow-col auto-cols-[45vw] xs:auto-cols-[38vw] gap-3 overflow-x-auto overscroll-x-contain px-4 pb-3 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:auto-cols-[28vw] sm:gap-4 sm:px-[4.5%] md:auto-cols-[22vw] lg:auto-cols-[18.5vw] xl:auto-cols-[16vw] 2xl:auto-cols-[14.5vw]",
               isDragging ? "cursor-grabbing select-none" : "cursor-grab",
             )}
           >
@@ -191,12 +194,12 @@ export function MovieRow({
         ) : (
           <div
             aria-hidden="true"
-            className="hide-scrollbar grid grid-flow-col auto-cols-[38vw] xs:auto-cols-[30vw] gap-2.5 overflow-hidden px-4 pb-2 sm:auto-cols-[20vw] sm:gap-3 sm:px-[4.5%] md:auto-cols-[16.5vw] lg:auto-cols-[14vw] xl:auto-cols-[12.5vw] 2xl:auto-cols-[11vw]"
+            className="hide-scrollbar grid grid-flow-col auto-cols-[45vw] xs:auto-cols-[38vw] gap-3 overflow-hidden px-4 pb-3 sm:auto-cols-[28vw] sm:gap-4 sm:px-[4.5%] md:auto-cols-[22vw] lg:auto-cols-[18.5vw] xl:auto-cols-[16vw] 2xl:auto-cols-[14.5vw]"
           >
             {movies.slice(0, 10).map((movie, idx) => (
               <div key={movie.id || movie.slug || idx} className="space-y-2">
-                <div className="aspect-[2/3] animate-pulse rounded-md bg-white/[0.08]" />
-                <div className="h-3 w-4/5 animate-pulse rounded bg-white/[0.08]" />
+                <div className="aspect-[2/3] animate-pulse rounded-lg bg-white/[0.08]" />
+                <div className="h-3.5 w-4/5 animate-pulse rounded bg-white/[0.08]" />
                 <div className="h-2.5 w-1/2 animate-pulse rounded bg-white/[0.06]" />
               </div>
             ))}
@@ -210,13 +213,13 @@ export function MovieRow({
           disabled={!canScrollRight}
           aria-label={`Cuộn ${title} sang phải`}
           className={cn(
-            "hidden sm:grid absolute right-1 sm:right-3 top-[40%] -translate-y-1/2 z-30 size-10 sm:size-12 place-items-center rounded-full bg-black/80 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
+            "hidden sm:grid absolute right-1 sm:right-3 top-[40%] -translate-y-1/2 z-30 size-11 sm:size-13 place-items-center rounded-full bg-black/85 hover:bg-primary text-white shadow-2xl backdrop-blur-md border border-white/20 transition-all duration-200 hover:scale-110 active:scale-95",
             canScrollRight
               ? "opacity-0 group-hover/row:opacity-100"
               : "opacity-0 pointer-events-none",
           )}
         >
-          <ChevronRight className="size-6 -mr-0.5 text-white" />
+          <ChevronRight className="size-6 sm:size-7 -mr-0.5 text-white" />
         </button>
       </div>
     </section>
