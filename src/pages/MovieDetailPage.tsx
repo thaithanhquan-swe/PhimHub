@@ -65,6 +65,7 @@ export function MovieDetailPage() {
     movie?.id ?? "",
     movie?.title ?? "",
   );
+  const initializedIdRef = useRef<string>("");
 
   const franchiseQuery = useQuery({
     queryKey: ["franchise-parts", movie?.slug],
@@ -102,6 +103,9 @@ export function MovieDetailPage() {
 
   useEffect(() => {
     if (!movie) return;
+    if (initializedIdRef.current === id) return;
+    initializedIdRef.current = id;
+
     setCurrentServerIndex(0);
     setCurrentEpisodeIndex(0);
     setResumePrompt(null);
@@ -138,10 +142,14 @@ export function MovieDetailPage() {
       (progress.currentTime ?? 0) > 10 &&
       (progress.duration ?? 0) > (progress.currentTime ?? 0) + 15;
     if (selectedEpisode && hasSavedTime) {
-      setResumePrompt({
-        currentTime: progress.currentTime!,
-        duration: progress.duration!,
-      });
+      if (autoPlay) {
+        setResumeAtTime(progress.currentTime!);
+      } else {
+        setResumePrompt({
+          currentTime: progress.currentTime!,
+          duration: progress.duration!,
+        });
+      }
     }
 
     if (autoPlay || wasResumed) {

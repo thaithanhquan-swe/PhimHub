@@ -22,6 +22,7 @@ function saveLocalSearch(query: string) {
 
 export function useSyncSearch() {
   const pendingQueriesRef = useRef<Set<string>>(new Set());
+  const cooldownUntilRef = useRef<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   const syncSearch = useCallback(async (query: string) => {
@@ -29,7 +30,8 @@ export function useSyncSearch() {
     if (
       !normalizedQuery ||
       normalizedQuery.length > 200 ||
-      pendingQueriesRef.current.has(normalizedQuery)
+      pendingQueriesRef.current.has(normalizedQuery) ||
+      Date.now() < cooldownUntilRef.current
     ) {
       return;
     }
@@ -56,6 +58,10 @@ export function useSyncSearch() {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          // Throttled by backend DDoS protection: back off for 60 seconds
+          cooldownUntilRef.current = Date.now() + 60_000;
+        }
         throw new Error(`Đồng bộ lịch sử tìm kiếm thất bại (HTTP ${response.status}).`);
       }
 

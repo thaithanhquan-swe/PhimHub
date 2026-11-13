@@ -17,6 +17,7 @@ function getTelemetryUrl(path: string): string | null {
 
 export function useSyncWatchProgress(movieId: string, movieTitle: string) {
   const lastSentAtRef = useRef(0);
+  const throttledUntilRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export function useSyncWatchProgress(movieId: string, movieTitle: string) {
 
   const sendProgress = useCallback(
     async (progress: number, totalDuration: number) => {
+      if (Date.now() < throttledUntilRef.current) return;
       const url = getTelemetryUrl("watch-progress");
       if (!url) return;
 
@@ -44,6 +46,9 @@ export function useSyncWatchProgress(movieId: string, movieTitle: string) {
         });
 
         if (!response.ok) {
+          if (response.status === 429) {
+            throttledUntilRef.current = Date.now() + 60_000;
+          }
           throw new Error(`Đồng bộ tiến trình thất bại (HTTP ${response.status}).`);
         }
 

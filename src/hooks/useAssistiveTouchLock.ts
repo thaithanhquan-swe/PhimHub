@@ -60,8 +60,9 @@ export function useAssistiveTouchLock({
         const rect = container.getBoundingClientRect();
         const safePad = 14;
         const buttonSize = 54;
+        const initialX = Math.max(safePad, rect.width - buttonSize - safePad);
         const initialY = Math.max(safePad, (rect.height - buttonSize) / 2);
-        setLockButtonPos({ x: safePad, y: initialY });
+        setLockButtonPos({ x: initialX, y: initialY });
       }
     }
   }, [containerRef, lockButtonPos, onLockScreen, resetUnlockButtonTimer, triggerToast]);
@@ -185,11 +186,10 @@ export function useAssistiveTouchLock({
       const currentX = lockButtonPos ? lockButtonPos.x : dragStartRef.current.initialPosX;
       const currentY = lockButtonPos ? lockButtonPos.y : dragStartRef.current.initialPosY;
 
-      const isNearRight = currentX > containerRect.width / 2;
-      const snapX = isNearRight ? Math.max(safePad, containerRect.width - buttonSize - safePad) : safePad;
-      const snapY = Math.max(safePad, Math.min(containerRect.height - buttonSize - safePad, currentY));
+      const safeX = Math.max(safePad, Math.min(containerRect.width - buttonSize - safePad, currentX));
+      const safeY = Math.max(safePad, Math.min(containerRect.height - buttonSize - safePad, currentY));
 
-      setLockButtonPos({ x: snapX, y: snapY });
+      setLockButtonPos({ x: safeX, y: safeY });
     }
 
     resetUnlockButtonTimer();
