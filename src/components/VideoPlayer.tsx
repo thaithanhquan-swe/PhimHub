@@ -1,64 +1,27 @@
-import Hls from "hls.js";
-import {
-  AlertCircle,
-  Check,
-  ChevronRight,
-  Gauge,
-  Loader2,
-  Lock,
-  Maximize,
-  Minimize,
-  Pause,
-  PictureInPicture2,
-  Play,
-  RotateCcw,
-  RotateCw,
-  Scaling,
-  Settings,
-  SkipForward,
-  Smartphone,
-  Volume1,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import type React from "react";
+import { useAssistiveTouchLock } from "@/hooks/useAssistiveTouchLock";
+import { useAudioBoost } from "@/hooks/useAudioBoost";
+import { useHlsPlayer } from "@/hooks/useHlsPlayer";
+import { usePlayerGestures } from "@/hooks/usePlayerGestures";
+import { usePlayerOrientation } from "@/hooks/usePlayerOrientation";
 import { cn } from "@/lib/utils";
-
-function formatTime(seconds: number): string {
-  if (isNaN(seconds) || seconds < 0) return "00:00";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) {
-    return `${h}:${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
-  }
-  return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
-}
-
-const PLAYBACK_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-
-const AUDIO_BOOST_LEVELS = [
-  { val: 1.0, label: "100%", badge: "Tiêu chuẩn" },
-  { val: 2.0, label: "200%", badge: "To rõ" },
-  { val: 3.0, label: "300%", badge: "Khuyên dùng" },
-  { val: 4.0, label: "400%", badge: "Cực đại" },
-  { val: 5.0, label: "500%", badge: "Tối đa" },
-];
-
-type QualityOption = {
-  index: number; // -1 for auto
-  label: string;
-  height?: number;
-};
-
-const AUTO_QUALITY: QualityOption = { index: -1, label: "Tự động (Auto)" };
+import {
+  AssistiveTouchLock,
+  DoubleTapFeedback,
+  EmbedPlayerFallback,
+  NextEpisodePrompt,
+  PlayerBottomControls,
+  PlayerCenterControls,
+  type SettingsTab,
+  type VideoPlayerProps,
+} from "./player";
 
 export function VideoPlayer({
   m3u8Url,
   embedUrl,
   title,
-  episodeName,
+  episodeName: _episodeName,
   poster,
   autoPlay = true,
   hasNextEpisode = false,
@@ -66,140 +29,265 @@ export function VideoPlayer({
   onTimeUpdate,
   initialTime = 0,
   preferEmbed = false,
-}: {
-  m3u8Url?: string;
-  embedUrl?: string;
-  title: string;
-  episodeName?: string;
-  poster?: string;
-  autoPlay?: boolean;
-  hasNextEpisode?: boolean;
-  onNextEpisode?: () => void;
-  onTimeUpdate?: (currentTime: number, duration: number) => void;
-  initialTime?: number;
-  preferEmbed?: boolean;
-}) {
+}: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const initialSeekAppliedRef = useRef(false);
   const hideControlsTimerRef = useRef<number | null>(null);
-  const seekOverlayTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
-  // Playback state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [bufferedEnd, setBufferedEnd] = useState(0);
+  // Volume & Audio boost
   const [volume, setVolume] = useState(() => {
     try {
       const saved = localStorage.getItem("phimhub_player_volume");
       if (saved) {
         const num = Number(saved);
-        if (Number.isFinite(num) && num >= 0 && num <= 1) {
-          return num;
-        }
+        if (Number.isFinite(num) && num >= 0 && num <= 1) return num;
       }
     } catch {
       // Ignore
     }
     return 1;
   });
-  const [audioBoostFactor, setAudioBoostFactor] = useState(() => {
-    try {
-      const saved = localStorage.getItem("phimhub_audio_boost");
-      if (saved) {
-        const num = Number(saved);
-        if (Number.isFinite(num) && num >= 1 && num <= 5.0) {
-          return num;
-        }
-      }
-    } catch {
-      // Ignore
-    }
-    return 3.0; // Mặc định tăng âm lên 300% (3.0x / +9.5 dB) siêu to rõ theo yêu cầu
-  });
   const [isMuted, setIsMuted] = useState(false);
   const [canAdjustVolume, setCanAdjustVolume] = useState(true);
   const [isVolumeSliderOpen, setIsVolumeSliderOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [aspectRatio, setAspectRatio] = useState<"contain" | "cover">("contain");
-  const [qualities, setQualities] = useState<QualityOption[]>([AUTO_QUALITY]);
-  const [currentQualityIndex, setCurrentQualityIndex] = useState(-1);
   const [isTouchDevice] = useState(
     () => navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches,
   );
 
   // UI state
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [useEmbedFallback, setUseEmbedFallback] = useState(preferEmbed);
   const [showControls, setShowControls] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
-  const [isManualFullscreen, setIsManualFullscreen] = useState(false);
-  const [isLandscapeView, setIsLandscapeView] = useState(false);
-  const [isScreenLocked, setIsScreenLocked] = useState(false);
-  const [showUnlockButton, setShowUnlockButton] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"main" | "speed" | "quality" | "ratio" | "audio">("main");
-  const [seekFeedback, setSeekFeedback] = useState<string | null>(null);
-  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
-  const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("main");
 
-  // Double-tap seek state & gesture refs
-  const [doubleTapFeedback, setDoubleTapFeedback] = useState<{
-    side: "left" | "right";
-    seconds: number;
-  } | null>(null);
-  const singleTapTimerRef = useRef<number | null>(null);
-  const doubleTapActiveRef = useRef<{
-    side: "left" | "right";
-    count: number;
-    lastTime: number;
-  } | null>(null);
-  const doubleTapResetTimerRef = useRef<number | null>(null);
-  const pendingTapRef = useRef<{
-    side: "left" | "right" | "center";
-    time: number;
-  } | null>(null);
-  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const lastTouchTimestampRef = useRef<number>(0);
+  // Timeline hover
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<number>(0);
 
-  // Floating AssistiveTouch Lock Button position & drag state
-  const lockButtonRef = useRef<HTMLDivElement>(null);
-  const [lockButtonPos, setLockButtonPos] = useState<{ x: number; y: number } | null>(null);
-  const [isDraggingLock, setIsDraggingLock] = useState(false);
-  const isDraggingLockRef = useRef(false);
-  const dragStartRef = useRef<{
-    startX: number;
-    startY: number;
-    initialPosX: number;
-    initialPosY: number;
-    hasMoved: boolean;
-  }>({
-    startX: 0,
-    startY: 0,
-    initialPosX: 0,
-    initialPosY: 0,
-    hasMoved: false,
-  });
-  const lastUnlockTimeRef = useRef(0);
-
-  // Web Audio Context & GainNode for Audio Amplification (up to 200%)
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-
-  const unlockButtonTimerRef = useRef<number | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
+  const preferM3U8 = Boolean(m3u8Url && !useEmbedFallback);
 
   useEffect(() => {
     setUseEmbedFallback(preferEmbed);
   }, [preferEmbed]);
 
+  const triggerToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2200);
+  }, []);
+
+  const resetHideControlsTimer = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimerRef.current) {
+      window.clearTimeout(hideControlsTimerRef.current);
+    }
+    hideControlsTimerRef.current = window.setTimeout(() => {
+      setShowControls(false);
+    }, 2800);
+  }, []);
+
+  // Audio Amplification (Web Audio API hook)
+  const { audioBoostFactor, initAudioGain, setBoostLevel, resumeAudioContext } = useAudioBoost(videoRef);
+
+  // Orientation and Fullscreen
+  const {
+    isFullscreen,
+    isDeviceLandscape,
+    isManualFullscreen,
+    isLandscapeView,
+    isLandscape,
+    handleToggleScreenOrientation,
+  } = usePlayerOrientation({
+    containerRef,
+    videoRef,
+    triggerToast,
+    onResetHideControlsTimer: resetHideControlsTimer,
+  });
+
+  // Screen lock & floating AssistiveTouch virtual button
+  const {
+    isScreenLocked,
+    showUnlockButton,
+    setShowUnlockButton,
+    lockButtonPos,
+    isDraggingLock,
+    handleLockScreen,
+    handleUnlockScreen,
+    handleLockPointerDown,
+    handleLockPointerMove,
+    handleLockPointerUp,
+    resetUnlockButtonTimer,
+  } = useAssistiveTouchLock({
+    containerRef,
+    onLockScreen: () => {
+      setShowControls(false);
+      setIsSettingsOpen(false);
+      setIsVolumeSliderOpen(false);
+    },
+    onUnlockScreen: () => {
+      setShowControls(true);
+      resetHideControlsTimer();
+    },
+    triggerToast,
+  });
+
+  // HLS stream playback
+  const {
+    isPlaying,
+    currentTime,
+    setCurrentTime,
+    duration,
+    bufferedEnd,
+    isLoading,
+    setIsLoading,
+    error,
+    qualities,
+    currentQualityIndex,
+    setQuality,
+    autoNextCountdown,
+    mutedAutoplayNotice,
+    setMutedAutoplayNotice,
+    retryPlayback,
+  } = useHlsPlayer({
+    videoRef,
+    m3u8Url,
+    embedUrl,
+    preferM3U8,
+    autoPlay,
+    initialTime,
+    hasNextEpisode,
+    onNextEpisode,
+    onTimeUpdate,
+    onFallbackToEmbed: () => setUseEmbedFallback(true),
+    onSetMuted: setIsMuted,
+  });
+
+  // Playback control actions
+  function togglePlay() {
+    const video = videoRef.current;
+    if (!video) return;
+    resumeAudioContext();
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+    resetHideControlsTimer();
+  }
+
+  function seekBy(deltaSeconds: number, skipCenterFeedback = false) {
+    const video = videoRef.current;
+    if (!video) return;
+    const dur = Number.isFinite(video.duration) ? video.duration : 0;
+    const maxTime = dur > 0 ? dur : Math.max(video.currentTime + deltaSeconds, 0);
+    const target = Math.max(0, Math.min(maxTime, video.currentTime + deltaSeconds));
+    video.currentTime = target;
+    setCurrentTime(target);
+    if (!skipCenterFeedback) {
+      triggerToast(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
+    }
+    resetHideControlsTimer();
+  }
+
+  function changeVolume(newVol: number) {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const clampedVol = Math.max(0, Math.min(1, Math.round(newVol * 100) / 100));
+    try {
+      video.volume = clampedVol;
+    } catch {
+      // Ignore read-only volume on iOS Safari
+    }
+
+    const gainNode = initAudioGain();
+    if (gainNode) {
+      resumeAudioContext();
+      gainNode.gain.value = audioBoostFactor;
+    }
+
+    const appliedVolume = video.volume;
+    const volumeWasApplied = Math.abs(appliedVolume - clampedVol) < 0.02 || Boolean(gainNode);
+    setCanAdjustVolume(volumeWasApplied);
+    setVolume(clampedVol);
+
+    if (clampedVol > 0 && isMuted) {
+      video.muted = false;
+      setIsMuted(false);
+    }
+    try {
+      localStorage.setItem("phimhub_player_volume", String(clampedVol));
+    } catch {
+      // Ignore
+    }
+  }
+
+  function toggleMute() {
+    const video = videoRef.current;
+    if (!video) return;
+
+    resumeAudioContext();
+    if (isMuted) {
+      video.muted = false;
+      setIsMuted(false);
+      if (volume === 0) changeVolume(0.5);
+    } else {
+      video.muted = true;
+      setIsMuted(true);
+    }
+  }
+
+  function setSpeed(speed: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = speed;
+    setPlaybackSpeed(speed);
+    setIsSettingsOpen(false);
+  }
+
+  const togglePiP = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+        await video.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.warn("PiP error:", err);
+    }
+  };
+
+  // Double tap seek gestures & single tap toggle
+  const { doubleTapFeedback, handleClick, handleTouchStart, handleTouchEnd } = usePlayerGestures({
+    containerRef,
+    isScreenLocked,
+    onSeekBy: seekBy,
+    onSingleTap: () => {
+      if (!showControls) {
+        setShowControls(true);
+        resetHideControlsTimer();
+        return;
+      }
+      togglePlay();
+    },
+    onWakeLockIndicator: () => {
+      setShowUnlockButton(true);
+      resetUnlockButtonTimer();
+    },
+  });
+
+  // Close settings menu when clicking outside or pressing Escape
   useEffect(() => {
     if (!isSettingsOpen) return;
 
@@ -212,732 +300,19 @@ export function VideoPlayer({
       if (event.key === "Escape") setIsSettingsOpen(false);
     };
 
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isSettingsOpen]);
-
-  // Timeline hover state
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
-  const [hoverPosition, setHoverPosition] = useState<number>(0);
-
-  const preferM3U8 = Boolean(m3u8Url && !useEmbedFallback);
-
-  const seekToInitialTime = useCallback((video: HTMLVideoElement) => {
-    if (initialTime <= 0 || initialSeekAppliedRef.current) return;
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const targetTime = duration > 0 ? Math.min(initialTime, Math.max(0, duration - 1)) : initialTime;
-    try {
-      video.currentTime = targetTime;
-      initialSeekAppliedRef.current = true;
-      setCurrentTime(targetTime);
-    } catch (error) {
-      console.warn("Could not resume video at the saved position:", error);
-    }
-  }, [initialTime]);
-
-  useEffect(() => {
-    if (initialTime <= 0) return;
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.readyState >= 1) {
-      seekToInitialTime(video);
-      return;
-    }
-    const handleLoadedMetadata = () => seekToInitialTime(video);
-    video.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
-    return () => video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-  }, [initialTime, seekToInitialTime]);
-
-  // Auto-hide controls timer
-  const resetHideControlsTimer = useCallback(() => {
-    setShowControls(true);
-    if (hideControlsTimerRef.current) {
-      window.clearTimeout(hideControlsTimerRef.current);
-    }
-    if (isPlaying && !isSettingsOpen) {
-      hideControlsTimerRef.current = window.setTimeout(() => {
-        setShowControls(false);
-      }, 2800);
-    }
-  }, [isPlaying, isSettingsOpen]);
-
-  // Flash seek feedback (+10s, -10s)
-  const triggerSeekFeedback = (text: string) => {
-    setSeekFeedback(text);
-    if (seekOverlayTimerRef.current) {
-      window.clearTimeout(seekOverlayTimerRef.current);
-    }
-    seekOverlayTimerRef.current = window.setTimeout(() => {
-      setSeekFeedback(null);
-    }, 600);
-  };
-
-  const triggerToast = useCallback((msg: string) => {
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    setToastMessage(msg);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMessage(null);
-    }, 2200);
-  }, []);
-
-  const resetUnlockButtonTimer = useCallback(() => {
-    if (unlockButtonTimerRef.current) {
-      window.clearTimeout(unlockButtonTimerRef.current);
-    }
-    unlockButtonTimerRef.current = window.setTimeout(() => {
-      setShowUnlockButton(false);
-    }, 3500);
-  }, []);
-
-  const handleLockScreen = useCallback(() => {
-    setIsScreenLocked(true);
-    setShowControls(false);
-    setIsSettingsOpen(false);
-    setIsVolumeSliderOpen(false);
-    setShowUnlockButton(true);
-    resetUnlockButtonTimer();
-    triggerToast("Đã khóa màn hình");
-
-    if (!lockButtonPos) {
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const safePad = 14;
-        const buttonSize = 54;
-        const initialY = Math.max(safePad, (rect.height - buttonSize) / 2);
-        setLockButtonPos({ x: safePad, y: initialY });
-      }
-    }
-  }, [lockButtonPos, resetUnlockButtonTimer, triggerToast]);
-
-  const handleUnlockScreen = useCallback(() => {
-    if (Date.now() - lastUnlockTimeRef.current < 400) return;
-    lastUnlockTimeRef.current = Date.now();
-    setIsScreenLocked(false);
-    setShowUnlockButton(false);
-    setShowControls(true);
-    resetHideControlsTimer();
-    triggerToast("Đã mở khóa màn hình");
-  }, [resetHideControlsTimer, triggerToast]);
-
-  // Keep floating AssistiveTouch lock button clamped inside container upon window resize or device rotation
-  useEffect(() => {
-    const handleResize = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const buttonSize = 54;
-      const safePad = 14;
-      setLockButtonPos((prev) => {
-        if (!prev) return null;
-        const maxX = Math.max(safePad, rect.width - buttonSize - safePad);
-        const maxY = Math.max(safePad, rect.height - buttonSize - safePad);
-        const targetX = prev.x > rect.width / 2 ? maxX : safePad;
-        const targetY = Math.max(safePad, Math.min(maxY, prev.y));
-        return { x: targetX, y: targetY };
-      });
-    };
-
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
-    };
-  }, []);
-
-  const handleLockPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore if not supported in environment
-    }
-
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const buttonRect = e.currentTarget.getBoundingClientRect();
-
-    const currentX = lockButtonPos ? lockButtonPos.x : buttonRect.left - containerRect.left;
-    const currentY = lockButtonPos ? lockButtonPos.y : buttonRect.top - containerRect.top;
-
-    dragStartRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      initialPosX: currentX,
-      initialPosY: currentY,
-      hasMoved: false,
-    };
-    isDraggingLockRef.current = true;
-    setIsDraggingLock(true);
-    setShowUnlockButton(true);
-    resetUnlockButtonTimer();
-  };
-
-  const handleLockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingLockRef.current) return;
-    e.stopPropagation();
-
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-
-    const dx = e.clientX - dragStartRef.current.startX;
-    const dy = e.clientY - dragStartRef.current.startY;
-
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-      dragStartRef.current.hasMoved = true;
-    }
-
-    const buttonSize = 54;
-    const safePad = 12;
-
-    const minX = safePad;
-    const maxX = Math.max(safePad, containerRect.width - buttonSize - safePad);
-    const minY = safePad;
-    const maxY = Math.max(safePad, containerRect.height - buttonSize - safePad);
-
-    const rawX = dragStartRef.current.initialPosX + dx;
-    const rawY = dragStartRef.current.initialPosY + dy;
-
-    const clampedX = Math.max(minX, Math.min(maxX, rawX));
-    const clampedY = Math.max(minY, Math.min(maxY, rawY));
-
-    setLockButtonPos({ x: clampedX, y: clampedY });
-    resetUnlockButtonTimer();
-  };
-
-  const handleLockPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingLockRef.current) return;
-    e.stopPropagation();
-    isDraggingLockRef.current = false;
-    setIsDraggingLock(false);
-
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
-
-    const hasMoved = dragStartRef.current.hasMoved;
-
-    if (!hasMoved) {
-      handleUnlockScreen();
-      return;
-    }
-
-    setTimeout(() => {
-      dragStartRef.current.hasMoved = false;
-    }, 50);
-
-    // Snap smoothly to nearest left or right edge (AssistiveTouch style!)
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-
-    const buttonSize = 54;
-    const safePad = 14;
-
-    setLockButtonPos((prev) => {
-      if (!prev) return null;
-      const centerX = prev.x + buttonSize / 2;
-      const snapLeft = safePad;
-      const snapRight = Math.max(safePad, containerRect.width - buttonSize - safePad);
-
-      const targetX = centerX < containerRect.width / 2 ? snapLeft : snapRight;
-      const minY = safePad;
-      const maxY = Math.max(safePad, containerRect.height - buttonSize - safePad);
-      const targetY = Math.max(minY, Math.min(maxY, prev.y));
-
-      return { x: targetX, y: targetY };
-    });
-
-    resetUnlockButtonTimer();
-  };
-
-  const handleToggleScreenOrientation = useCallback(async () => {
-    const container = containerRef.current;
-    const video = videoRef.current;
-    if (!container) return;
-
-    const orientation = screen.orientation as
-      | (ScreenOrientation & {
-          lock?: (orientation: "landscape" | "portrait") => Promise<void>;
-          unlock?: () => void;
-        })
-      | undefined;
-
-    const isCurrentlyLandscape = Boolean(
-      document.fullscreenElement ||
-      (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ||
-      (video as unknown as { webkitDisplayingFullscreen?: boolean })?.webkitDisplayingFullscreen ||
-      isFullscreen ||
-      isManualFullscreen ||
-      isLandscapeView
-    );
-
-    // 2nd click: Return to portrait/vertical mode
-    if (isCurrentlyLandscape) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen) {
-        (document as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      } else if (
-        video &&
-        typeof (video as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen === "function"
-      ) {
-        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      }
-
-      if (orientation?.unlock) {
-        try {
-          orientation.unlock();
-        } catch {
-          // Ignore
-        }
-      }
-      if (orientation?.lock) {
-        try {
-          orientation.lock("portrait").catch(() => {});
-        } catch {
-          // Ignore
-        }
-      }
-
-      setIsManualFullscreen(false);
-      setIsFullscreen(false);
-      setIsLandscapeView(false);
-      triggerToast("Chế độ dọc");
-      resetHideControlsTimer();
-      return;
-    }
-
-    // 1st click: Rotate screen to landscape for easier viewing
-    setIsLandscapeView(true);
-    triggerToast("Xoay ngang màn hình");
-
-    // Fullscreen API (Android Chrome, Desktop, iPad, etc.)
-    if (container.requestFullscreen) {
-      try {
-        await container.requestFullscreen();
-        setIsFullscreen(true);
-      } catch (err) {
-        console.warn("requestFullscreen error:", err);
-      }
-    } else if ((container as unknown as { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen) {
-      try {
-        await (container as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen();
-        setIsFullscreen(true);
-      } catch (err) {
-        console.warn("webkitRequestFullscreen error:", err);
-      }
-    }
-
-    // Lock orientation to landscape on devices that support Screen Orientation API (e.g. Android)
-    if (orientation?.lock) {
-      try {
-        await orientation.lock("landscape");
-      } catch (err) {
-        console.warn("orientation.lock error:", err);
-      }
-    }
-
-    setIsManualFullscreen(true);
-    resetHideControlsTimer();
-  }, [isFullscreen, isLandscapeView, isManualFullscreen, resetHideControlsTimer, triggerToast]);
-
-  // Setup video source & HLS
-  useEffect(() => {
-    setError(null);
-    setIsLoading(true);
-    setMutedAutoplayNotice(false);
-    setQualities([AUTO_QUALITY]);
-    setCurrentQualityIndex(-1);
-
-    if (!preferM3U8 || !m3u8Url) {
-      setIsLoading(false);
-      return;
-    }
-
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    // Safety timeout: If stream metadata doesn't load within 8.5s, fall back to embed player
-    const timeoutTimer = window.setTimeout(() => {
-      const v = videoRef.current;
-      if (v && v.readyState === 0 && !isPlaying) {
-        console.warn("HLS load timed out after 8.5s, falling back to embed player");
-        if (embedUrl) {
-          setUseEmbedFallback(true);
-        } else {
-          setIsLoading(false);
-        }
-      }
-    }, 8500);
-
-    // Prefer Hls.js on all browsers supporting MediaSource Extensions (Chrome, Edge, Firefox, Mac Safari)
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false, // Critical: lowLatencyMode is for live streams, disable for VOD to prevent stalling
-        backBufferLength: 60,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 120,
-        maxBufferSize: 60 * 1000 * 1000,
-        manifestLoadingTimeOut: 8000,
-        manifestLoadingMaxRetry: 3,
-        levelLoadingTimeOut: 8000,
-        levelLoadingMaxRetry: 3,
-        fragLoadingTimeOut: 12000,
-        fragLoadingMaxRetry: 3,
-        startLevel: -1,
-      });
-
-      hlsRef.current = hls;
-      hls.loadSource(m3u8Url);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-        setIsLoading(false);
-        setDuration(video.duration || 0);
-        seekToInitialTime(video);
-
-        const sortedLevels = data.levels
-          .map((level, index) => ({ index, height: level.height, bitrate: level.bitrate }))
-          .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || b.bitrate - a.bitrate);
-        const seenHeights = new Set<number>();
-        const availableQualities = sortedLevels
-          .filter(({ height }) => {
-            if (!height) return true;
-            if (seenHeights.has(height)) return false;
-            seenHeights.add(height);
-            return true;
-          })
-          .map(({ index, height }) => ({
-            index,
-            label: height
-              ? `${height}p${height >= 1080 ? " FHD" : height >= 720 ? " HD" : ""}`
-              : `Chất lượng ${index + 1}`,
-            height,
-          }));
-
-        setQualities([AUTO_QUALITY, ...availableQualities]);
-
-        if (autoPlay) {
-          const playPromise = video.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                setIsPlaying(true);
-                setIsLoading(false);
-              })
-              .catch(() => {
-                // Autoplay blocked by browser policy: attempt muted autoplay
-                video.muted = true;
-                setIsMuted(true);
-                video
-                  .play()
-                  .then(() => {
-                    setIsPlaying(true);
-                    setIsLoading(false);
-                    setMutedAutoplayNotice(true);
-                  })
-                  .catch(() => {
-                    // Completely blocked: stay paused and ready for user click
-                    video.muted = false;
-                    setIsMuted(false);
-                    setIsPlaying(false);
-                    setIsLoading(false);
-                  });
-              });
-          }
-        }
-      });
-
-      let fatalErrorCount = 0;
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          fatalErrorCount++;
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              if (fatalErrorCount <= 2) {
-                hls.startLoad();
-              } else {
-                hls.destroy();
-                if (embedUrl) {
-                  setUseEmbedFallback(true);
-                } else {
-                  setError("Không thể kết nối máy chủ phát video. Vui lòng thử lại.");
-                  setIsLoading(false);
-                }
-              }
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              if (fatalErrorCount <= 2) {
-                hls.recoverMediaError();
-              } else {
-                hls.destroy();
-                if (embedUrl) {
-                  setUseEmbedFallback(true);
-                } else {
-                  setError("Định dạng video không tương thích.");
-                  setIsLoading(false);
-                }
-              }
-              break;
-            default:
-              hls.destroy();
-              if (embedUrl) {
-                setUseEmbedFallback(true);
-              } else {
-                setError("Luồng video gặp sự cố. Vui lòng thử lại.");
-                setIsLoading(false);
-              }
-              break;
-          }
-        }
-      });
-
-      return () => {
-        window.clearTimeout(timeoutTimer);
-        hls.destroy();
-        hlsRef.current = null;
-      };
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Native iOS Safari path
-      video.src = m3u8Url;
-      const handleLoadedMeta = () => {
-        setIsLoading(false);
-        setDuration(video.duration || 0);
-        seekToInitialTime(video);
-        if (autoPlay) {
-          video.play().catch(() => {
-            video.muted = true;
-            setIsMuted(true);
-            video.play().then(() => {
-              setIsPlaying(true);
-              setIsLoading(false);
-              setMutedAutoplayNotice(true);
-            }).catch(() => {
-              video.muted = false;
-              setIsMuted(false);
-              setIsPlaying(false);
-              setIsLoading(false);
-            });
-          });
-        }
-      };
-      const handleError = () => {
-        if (embedUrl) {
-          setUseEmbedFallback(true);
-        } else {
-          setError("Không thể phát video.");
-          setIsLoading(false);
-        }
-      };
-
-      video.addEventListener("loadedmetadata", handleLoadedMeta, { once: true });
-      video.addEventListener("error", handleError, { once: true });
-
-      return () => {
-        window.clearTimeout(timeoutTimer);
-        video.removeEventListener("loadedmetadata", handleLoadedMeta);
-        video.removeEventListener("error", handleError);
-      };
-    } else if (embedUrl) {
-      setUseEmbedFallback(true);
-    } else {
-      setError("Trình duyệt không hỗ trợ phát định dạng video này.");
-      setIsLoading(false);
-    }
-  }, [m3u8Url, preferM3U8, autoPlay, embedUrl, seekToInitialTime]);
-
-  // Video time, buffer, and countdown listeners
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
-      if (video.duration && !isNaN(video.duration)) {
-        setDuration(video.duration);
-      }
-      onTimeUpdate?.(video.currentTime, video.duration || 0);
-
-      // Buffered calculation
-      if (video.buffered.length > 0) {
-        for (let i = video.buffered.length - 1; i >= 0; i--) {
-          if (video.buffered.start(i) <= video.currentTime) {
-            setBufferedEnd(video.buffered.end(i));
-            break;
-          }
-        }
-      }
-
-      // Next Episode countdown in the last 25s
-      const remaining = video.duration - video.currentTime;
-      if (hasNextEpisode && remaining > 0 && remaining <= 25) {
-        setAutoNextCountdown(Math.ceil(remaining));
-      } else {
-        setAutoNextCountdown(null);
-      }
-    };
-
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => {
-      setIsPlaying(false);
-      setIsLoading(false); // Stop buffering spinner when paused
-    };
-    const handleWaiting = () => {
-      // Only display spinner if video is playing and actively waiting for data
-      if (!video.paused) {
-        setIsLoading(true);
-      }
-    };
-    const handlePlaying = () => {
-      setIsPlaying(true);
-      setIsLoading(false);
-    };
-    const handleCanPlay = () => setIsLoading(false);
-    const handleLoadedData = () => setIsLoading(false);
-    const handleEnded = () => {
-      setIsPlaying(false);
-      if (hasNextEpisode && onNextEpisode) {
-        onNextEpisode();
-      }
-    };
-
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    video.addEventListener("play", handlePlay);
-    video.addEventListener("pause", handlePause);
-    video.addEventListener("waiting", handleWaiting);
-    video.addEventListener("playing", handlePlaying);
-    video.addEventListener("canplay", handleCanPlay);
-    video.addEventListener("loadeddata", handleLoadedData);
-    video.addEventListener("ended", handleEnded);
-
-    return () => {
-      video.removeEventListener("timeupdate", handleTimeUpdate);
-      video.removeEventListener("play", handlePlay);
-      video.removeEventListener("pause", handlePause);
-      video.removeEventListener("waiting", handleWaiting);
-      video.removeEventListener("playing", handlePlaying);
-      video.removeEventListener("canplay", handleCanPlay);
-      video.removeEventListener("loadeddata", handleLoadedData);
-      video.removeEventListener("ended", handleEnded);
-    };
-  }, [hasNextEpisode, onNextEpisode, onTimeUpdate]);
-
-  // Track browser fullscreen without switching to iOS's native video controls.
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      const isFs = Boolean(
-        document.fullscreenElement ||
-        (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
-      );
-      setIsFullscreen(isFs);
-      if (!isFs) {
-        setIsLandscapeView(false);
-        setIsManualFullscreen(false);
-      }
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
-    };
-  }, []);
-
-  // Prevent iOS Safari from ever launching native QuickTime default player
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleBeginFs = () => {
-      if (typeof (video as unknown as { webkitExitFullscreen?: () => void }).webkitExitFullscreen === "function") {
-        (video as unknown as { webkitExitFullscreen: () => void }).webkitExitFullscreen();
-      }
-    };
-
-    video.addEventListener("webkitbeginfullscreen", handleBeginFs);
-
-    return () => {
-      video.removeEventListener("webkitbeginfullscreen", handleBeginFs);
-    };
-  }, []);
-
-  // Lock body scroll when in fullscreen mode
-  useEffect(() => {
-    if (isManualFullscreen || isFullscreen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isManualFullscreen, isFullscreen]);
-
-  // Clean up timers on unmount
-  useEffect(() => {
-    return () => {
-      if (hideControlsTimerRef.current) window.clearTimeout(hideControlsTimerRef.current);
-      if (seekOverlayTimerRef.current) window.clearTimeout(seekOverlayTimerRef.current);
-      if (unlockButtonTimerRef.current) window.clearTimeout(unlockButtonTimerRef.current);
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-      if (singleTapTimerRef.current) window.clearTimeout(singleTapTimerRef.current);
-      if (doubleTapResetTimerRef.current) window.clearTimeout(doubleTapResetTimerRef.current);
-    };
-  }, []);
-
-  // Expand the player when a touch device is physically turned to landscape.
-  useEffect(() => {
-    const updateOrientation = () => {
-      const isMobileLandscape =
-        window.innerWidth > window.innerHeight &&
-        (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches);
-      setIsDeviceLandscape(isMobileLandscape);
-    };
-    const handleOrientationChange = () => {
-      updateOrientation();
-      if (window.innerWidth <= window.innerHeight && !isLandscapeView) {
-        setIsManualFullscreen(false);
-      }
-    };
-
-    updateOrientation();
-    window.addEventListener("orientationchange", handleOrientationChange);
-    window.addEventListener("resize", updateOrientation);
-    return () => {
-      window.removeEventListener("orientationchange", handleOrientationChange);
-      window.removeEventListener("resize", updateOrientation);
-    };
-  }, [isLandscapeView]);
 
   // Keyboard Shortcuts (Netflix Standard)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isScreenLocked) return;
-
-      // Don't intercept if user is typing in an input
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
-        return;
-      }
+      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
 
       const video = videoRef.current;
       if (!video) return;
@@ -968,11 +343,11 @@ export function VideoPlayer({
           break;
         case "arrowup":
           e.preventDefault();
-          changeVolume(Math.min(1, Math.round((volume + 0.05) * 100) / 100), true);
+          changeVolume(Math.min(1, Math.round((volume + 0.05) * 100) / 100));
           break;
         case "arrowdown":
           e.preventDefault();
-          changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100), true);
+          changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100));
           break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
@@ -987,114 +362,7 @@ export function VideoPlayer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation]);
 
-  // Web Audio Context & GainNode for Audio Amplification (keeps bar at 100% while sound is much louder)
-  const initAudioGain = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return null;
-
-    if (gainNodeRef.current && audioCtxRef.current) {
-      if (audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current.resume().catch(() => {});
-      }
-      return gainNodeRef.current;
-    }
-
-    try {
-      if (typeof window === "undefined") return null;
-      const AudioCtx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) return null;
-
-      const ctx = new AudioCtx();
-      const source = ctx.createMediaElementSource(video);
-      const gain = ctx.createGain();
-      const compressor = ctx.createDynamicsCompressor();
-
-      // Soft limiter/compressor prevents loud peaks from clipping/distorting when sound is heavily amplified (up to 500%)
-      compressor.threshold.value = -8;
-      compressor.knee.value = 25;
-      compressor.ratio.value = 12;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.25;
-
-      // Amplify the baseline audio stream (default 300% / 3.0x / +9.5 dB)
-      gain.gain.value = audioBoostFactor;
-
-      source.connect(gain);
-      gain.connect(compressor);
-      compressor.connect(ctx.destination);
-
-      audioCtxRef.current = ctx;
-      gainNodeRef.current = gain;
-      sourceNodeRef.current = source;
-
-      if (ctx.state === "suspended") {
-        ctx.resume().catch(() => {});
-      }
-
-      return gain;
-    } catch (err) {
-      console.warn("AudioContext boost initialization:", err);
-      return null;
-    }
-  }, [audioBoostFactor]);
-
-  const setBoostLevel = (level: number) => {
-    setAudioBoostFactor(level);
-    const gainNode = initAudioGain();
-    if (gainNode) {
-      gainNode.gain.value = level;
-    }
-    try {
-      localStorage.setItem("phimhub_audio_boost", String(level));
-    } catch {
-      // Ignore
-    }
-    triggerToast(
-      level > 1
-        ? `Đã bật tăng âm: ${Math.round(level * 100)}%`
-        : "Âm thanh: Tiêu chuẩn (100%)",
-    );
-  };
-
-  useEffect(() => {
-    return () => {
-      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-        audioCtxRef.current.close().catch(() => {});
-      }
-    };
-  }, []);
-
-  // Actions
-  function togglePlay() {
-    const video = videoRef.current;
-    if (!video) return;
-    if (audioCtxRef.current?.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-    if (video.paused) {
-      video.play().catch(() => {});
-    } else {
-      video.pause();
-    }
-    resetHideControlsTimer();
-  }
-
-  function seekBy(deltaSeconds: number, skipCenterFeedback = false) {
-    const video = videoRef.current;
-    if (!video) return;
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const maxTime = duration > 0 ? duration : Math.max(video.currentTime + deltaSeconds, 0);
-    const target = Math.max(0, Math.min(maxTime, video.currentTime + deltaSeconds));
-    video.currentTime = target;
-    setCurrentTime(target);
-    if (!skipCenterFeedback) {
-      triggerSeekFeedback(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
-    }
-    resetHideControlsTimer();
-  }
-
+  // Timeline scrub handlers
   function handleTimelineScrub(e: React.MouseEvent<HTMLDivElement>) {
     if (isScreenLocked) return;
     const video = videoRef.current;
@@ -1102,8 +370,22 @@ export function VideoPlayer({
     const rect = e.currentTarget.getBoundingClientRect();
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     video.currentTime = pos * duration;
+    setCurrentTime(pos * duration);
     resetHideControlsTimer();
   }
+
+  const handleTimelineScrubTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isScreenLocked) return;
+    const video = videoRef.current;
+    if (!video || !duration || duration <= 0) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    video.currentTime = pos * duration;
+    setCurrentTime(pos * duration);
+    resetHideControlsTimer();
+  };
 
   function handleTimelineHover(e: React.MouseEvent<HTMLDivElement>) {
     if (isScreenLocked) return;
@@ -1114,327 +396,23 @@ export function VideoPlayer({
     setHoverPosition(pos * 100);
   }
 
-  function changeVolume(newVol: number, showToast = false) {
-    const video = videoRef.current;
-    if (!video) return;
-
-    // Standard volume range: 0.0 - 1.0 (0% - 100%)
-    const clampedVol = Math.max(0, Math.min(1, Math.round(newVol * 100) / 100));
-
-    try {
-      video.volume = clampedVol;
-    } catch {
-      // Ignore read-only volume on iOS Safari
-    }
-
-    // Connect Web Audio GainNode for audio amplification
-    const gainNode = initAudioGain();
-    if (gainNode) {
-      if (audioCtxRef.current?.state === "suspended") {
-        audioCtxRef.current.resume().catch(() => {});
-      }
-      gainNode.gain.value = audioBoostFactor;
-    }
-
-    const appliedVolume = video.volume;
-    const volumeWasApplied = Math.abs(appliedVolume - clampedVol) < 0.02 || Boolean(gainNode);
-    setCanAdjustVolume(volumeWasApplied);
-    setVolume(clampedVol);
-
-    try {
-      localStorage.setItem("phimhub_player_volume", String(clampedVol));
-    } catch {
-      // Ignore
-    }
-
-    if (clampedVol > 0 && video.muted) {
-      video.muted = false;
-      setIsMuted(false);
-    }
-
-    if (showToast) {
-      triggerToast(`Âm lượng: ${Math.round(clampedVol * 100)}%`);
-    }
-  }
-
-  function handleVolumeButtonClick() {
-    if (isTouchDevice) {
-      setIsVolumeSliderOpen((open) => !open);
-      return;
-    }
-    toggleMute();
-  }
-
-  function toggleMute() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = !video.muted;
-    setIsMuted(video.muted);
-  }
-
-  function setSpeed(speed: number) {
-    const video = videoRef.current;
-    if (!video) return;
-    video.playbackRate = speed;
-    setPlaybackSpeed(speed);
-    setIsSettingsOpen(false);
-    resetHideControlsTimer();
-  }
-
-  function setQuality(levelIndex: number) {
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = levelIndex;
-      setCurrentQualityIndex(levelIndex);
-    }
-    setIsSettingsOpen(false);
-    resetHideControlsTimer();
-  }
-
-  async function togglePiP() {
-    const video = videoRef.current;
-    if (!video) return;
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (document.pictureInPictureEnabled) {
-        await video.requestPictureInPicture();
-      }
-    } catch (e) {
-      console.warn("PiP error:", e);
-    }
-  }
-
-  // Touch scrub for mobile devices
-  const handleTimelineScrubTouch = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isScreenLocked) return;
-    if (!videoRef.current || !duration || duration <= 0) return;
-    const touch = e.touches[0];
-    if (!touch) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-    videoRef.current.currentTime = pos * duration;
-    setCurrentTime(pos * duration);
-    resetHideControlsTimer();
-  };
-
-  const handleSingleTap = useCallback(() => {
-    if (isScreenLocked) {
-      setShowUnlockButton(true);
-      resetUnlockButtonTimer();
-      return;
-    }
-    if (!showControls && isPlaying) {
-      setShowControls(true);
-      resetHideControlsTimer();
-      return;
-    }
-    togglePlay();
-  }, [isPlaying, isScreenLocked, resetHideControlsTimer, resetUnlockButtonTimer, showControls]);
-
-  const handleTap = useCallback(
-    (clientX: number) => {
-      if (isScreenLocked) {
-        setShowUnlockButton(true);
-        resetUnlockButtonTimer();
-        return;
-      }
-
-      const container = containerRef.current;
-      let side: "left" | "right" = "right";
-
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const width = rect.width > 0 ? rect.width : typeof window !== "undefined" ? window.innerWidth : 800;
-        const left = rect.width > 0 ? rect.left : 0;
-        const relativeX = clientX - left;
-        side = relativeX < width / 2 ? "left" : "right";
-      }
-
-      const now = Date.now();
-
-      // 1. Continuation tap in active double-tap burst (e.g. +20s, +30s...)
-      if (
-        doubleTapActiveRef.current &&
-        doubleTapActiveRef.current.side === side &&
-        now - doubleTapActiveRef.current.lastTime < 650
-      ) {
-        if (doubleTapResetTimerRef.current) {
-          window.clearTimeout(doubleTapResetTimerRef.current);
-        }
-        const newCount = doubleTapActiveRef.current.count + 1;
-        doubleTapActiveRef.current = {
-          side,
-          count: newCount,
-          lastTime: now,
-        };
-
-        seekBy(side === "right" ? 10 : -10, true);
-        setDoubleTapFeedback({
-          side,
-          seconds: newCount * 10,
-        });
-
-        doubleTapResetTimerRef.current = window.setTimeout(() => {
-          doubleTapActiveRef.current = null;
-          setDoubleTapFeedback(null);
-        }, 650);
-        return;
-      }
-
-      // 2. Second tap of a new double tap
-      if (
-        pendingTapRef.current &&
-        pendingTapRef.current.side === side &&
-        now - pendingTapRef.current.time < 320
-      ) {
-        if (singleTapTimerRef.current) {
-          window.clearTimeout(singleTapTimerRef.current);
-          singleTapTimerRef.current = null;
-        }
-        pendingTapRef.current = null;
-
-        if (doubleTapResetTimerRef.current) {
-          window.clearTimeout(doubleTapResetTimerRef.current);
-        }
-        doubleTapActiveRef.current = {
-          side,
-          count: 1,
-          lastTime: now,
-        };
-
-        seekBy(side === "right" ? 10 : -10, true);
-        setDoubleTapFeedback({
-          side,
-          seconds: 10,
-        });
-
-        doubleTapResetTimerRef.current = window.setTimeout(() => {
-          doubleTapActiveRef.current = null;
-          setDoubleTapFeedback(null);
-        }, 650);
-        return;
-      }
-
-      // 3. First tap
-      pendingTapRef.current = {
-        side,
-        time: now,
-      };
-      if (singleTapTimerRef.current) {
-        window.clearTimeout(singleTapTimerRef.current);
-      }
-      singleTapTimerRef.current = window.setTimeout(() => {
-        pendingTapRef.current = null;
-        singleTapTimerRef.current = null;
-        handleSingleTap();
-      }, 280);
-    },
-    [handleSingleTap, isScreenLocked, resetUnlockButtonTimer],
-  );
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isScreenLocked) {
-      setShowUnlockButton(true);
-      resetUnlockButtonTimer();
-      return;
-    }
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      touchStartPosRef.current = {
-        x: touch.clientX,
-        y: touch.clientY,
-        time: Date.now(),
-      };
-    } else {
-      touchStartPosRef.current = null;
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isScreenLocked) return;
-    if (!touchStartPosRef.current) return;
-
-    const start = touchStartPosRef.current;
-    touchStartPosRef.current = null;
-
-    if (e.changedTouches.length === 1) {
-      const touch = e.changedTouches[0];
-      const dx = Math.abs(touch.clientX - start.x);
-      const dy = Math.abs(touch.clientY - start.y);
-      const dt = Date.now() - start.time;
-
-      if (dx < 15 && dy < 15 && dt < 400) {
-        lastTouchTimestampRef.current = Date.now();
-        handleTap(touch.clientX);
-      }
-    }
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (Date.now() - lastTouchTimestampRef.current < 500) {
-      return;
-    }
-    handleTap(e.clientX);
-  };
-
-  // If using embed iframe (fallback or when m3u8 is absent)
+  // If using embed iframe (fallback or when preferEmbed is set)
   if (!preferM3U8 && embedUrl) {
     return (
-      <div
-        ref={containerRef}
-        className={cn(
-          "relative aspect-video w-full overflow-hidden rounded-md bg-black shadow-2xl ring-1 ring-white/10 group/embed",
-          (isDeviceLandscape || isManualFullscreen || isFullscreen) && "player-landscape-mode",
-        )}
-      >
-        {m3u8Url && (
-          <button
-            type="button"
-            onClick={() => setUseEmbedFallback(false)}
-            className="absolute top-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/85 border border-white/20 px-3 py-1.5 text-xs font-semibold text-white shadow-xl backdrop-blur-md hover:bg-primary transition-all active:scale-95"
-          >
-            <span>Phát nguồn trực tiếp (HLS)</span>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={handleToggleScreenOrientation}
-          className="absolute left-2 top-2 z-30 grid size-9 place-items-center rounded-full bg-black/70 text-white/90 backdrop-blur-sm hover:bg-black"
-          title={
-            isLandscapeView || isFullscreen || isManualFullscreen
-              ? "Chế độ dọc"
-              : "Xoay ngang màn hình"
-          }
-          aria-label={
-            isLandscapeView || isFullscreen || isManualFullscreen
-              ? "Chế độ dọc"
-              : "Xoay ngang màn hình"
-          }
-        >
-          {isLandscapeView || isFullscreen || isManualFullscreen ? (
-            <Minimize className="size-4" />
-          ) : (
-            <Maximize className="size-4" />
-          )}
-        </button>
-        <div className="absolute bottom-2 left-2 z-30 rounded-md bg-black/75 px-2.5 py-1.5 text-[10px] text-white/85 shadow backdrop-blur-sm">
-          Embed: chất lượng/tốc độ do nguồn quản lý. Lỗi phát? Thử máy chủ khác bên trên.
-        </div>
-        <iframe
-          key={embedUrl}
-          src={embedUrl}
-          title={title}
-          className="size-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          referrerPolicy="origin"
-        />
-      </div>
+      <EmbedPlayerFallback
+        containerRef={containerRef}
+        embedUrl={embedUrl}
+        title={title}
+        m3u8Url={m3u8Url}
+        isDeviceLandscape={isDeviceLandscape}
+        isManualFullscreen={isManualFullscreen}
+        isFullscreen={isFullscreen}
+        isLandscapeView={isLandscapeView}
+        onSwitchToHls={() => setUseEmbedFallback(false)}
+        onToggleOrientation={handleToggleScreenOrientation}
+      />
     );
   }
-
-  const progressPercent = duration ? (currentTime / duration) * 100 : 0;
-  const bufferPercent = duration ? (bufferedEnd / duration) * 100 : 0;
 
   return (
     <div
@@ -1480,754 +458,112 @@ export function VideoPlayer({
         aria-label="Khu vực cử chỉ phát video"
       />
 
-      {/* Floating AssistiveTouch Unlock Button when Screen is Locked */}
-      {isScreenLocked && (
-        <div
-          ref={lockButtonRef}
-          data-testid="assistive-lock-button"
-          style={{
-            transform: lockButtonPos
-              ? `translate3d(${lockButtonPos.x}px, ${lockButtonPos.y}px, 0)`
-              : undefined,
-            touchAction: "none",
-          }}
-          onPointerDown={handleLockPointerDown}
-          onPointerMove={handleLockPointerMove}
-          onPointerUp={handleLockPointerUp}
-          onPointerCancel={handleLockPointerUp}
-          className={cn(
-            "absolute top-0 left-0 z-50 select-none cursor-grab active:cursor-grabbing",
-            !lockButtonPos && "left-3.5 sm:left-4 top-1/2 -translate-y-1/2",
-            isDraggingLock ? "transition-none" : "transition-all duration-300 ease-out",
-            showUnlockButton || isDraggingLock
-              ? "opacity-100 scale-100 pointer-events-auto"
-              : "opacity-45 hover:opacity-100 scale-95 pointer-events-auto",
-          )}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!dragStartRef.current.hasMoved) {
-                handleUnlockScreen();
-              }
-            }}
-            className="group/assistive relative flex items-center justify-center size-13 sm:size-14 rounded-full bg-[#18181b]/80 backdrop-blur-xl border border-white/25 shadow-2xl transition-transform duration-150 active:scale-95 hover:scale-105"
-            title="Nhấn để mở khóa • Kéo để di chuyển"
-            aria-label="Mở khóa màn hình"
-          >
-            {/* Outer concentric frosted glass ring */}
-            <div className="size-10 sm:size-11 rounded-full border border-white/30 bg-white/10 flex items-center justify-center shadow-inner group-hover/assistive:border-white/50 transition-colors">
-              {/* Inner core circle */}
-              <div className="size-7 sm:size-8 rounded-full bg-white/20 border border-white/50 flex items-center justify-center shadow-md group-hover/assistive:bg-primary/80 group-hover/assistive:border-primary transition-colors">
-                <Lock className="size-3.5 sm:size-4 text-white stroke-[2.5] drop-shadow" />
-              </div>
-            </div>
+      {/* Animated Double-Tap Seek Indicators (+10s / -10s) */}
+      <DoubleTapFeedback feedback={doubleTapFeedback} />
 
-            {/* Subtle Pulse Halo when active */}
-            {showUnlockButton && (
-              <span className="absolute -inset-1 rounded-full border border-primary/50 animate-ping opacity-30 pointer-events-none" />
-            )}
-          </button>
+      {/* Floating AssistiveTouch Virtual Lock Button */}
+      <AssistiveTouchLock
+        isScreenLocked={isScreenLocked}
+        showUnlockButton={showUnlockButton}
+        lockButtonPos={lockButtonPos}
+        isDraggingLock={isDraggingLock}
+        onPointerDown={handleLockPointerDown}
+        onPointerMove={handleLockPointerMove}
+        onPointerUp={handleLockPointerUp}
+        onUnlock={handleUnlockScreen}
+      />
 
-          {/* Mini "Mở khóa" badge hint */}
-          <span
-            className={cn(
-              "pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/85 border border-white/20 px-2 py-0.5 text-[9px] font-bold text-white shadow-lg backdrop-blur-sm transition-opacity duration-200",
-              showUnlockButton || isDraggingLock ? "opacity-100" : "opacity-0",
-              lockButtonPos && lockButtonPos.y > 100 ? "-top-6" : "-bottom-6",
-            )}
-          >
-            Mở khóa
-          </span>
-        </div>
-      )}
+      {/* Center Controls, Play Button, Buffering Spinner, Toasts & Alerts */}
+      <PlayerCenterControls
+        isLoading={isLoading}
+        isPlaying={isPlaying}
+        isMuted={isMuted}
+        isScreenLocked={isScreenLocked}
+        error={error}
+        toastMessage={toastMessage}
+        mutedAutoplayNotice={mutedAutoplayNotice}
+        embedUrl={embedUrl}
+        onTogglePlay={togglePlay}
+        onToggleMute={toggleMute}
+        onDismissMutedAutoplay={() => setMutedAutoplayNotice(false)}
+        onRetry={retryPlayback}
+        onUseFallback={() => {
+          setUseEmbedFallback(true);
+          setIsLoading(false);
+        }}
+      />
 
-      {/* Toast Notification (Screen lock/unlock, orientation switch) */}
-      {toastMessage && (
-        <div className="pointer-events-none absolute top-14 left-1/2 -translate-x-1/2 z-40">
-          <div className="flex items-center gap-2 rounded-full bg-black/85 border border-white/20 px-4 py-2 text-xs font-bold text-white shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
-            {toastMessage.includes("khóa") ? (
-              <Lock className="size-3.5 text-primary" />
-            ) : (
-              <Smartphone className="size-3.5 text-primary rotate-90" />
-            )}
-            <span>{toastMessage}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Big Center Play Button when paused and not actively loading */}
-      {!isPlaying && !isLoading && !error && !isScreenLocked && (
-        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/35 transition-colors">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlay();
-            }}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => {
-              e.stopPropagation();
-              togglePlay();
-            }}
-            className="pointer-events-auto grid size-16 sm:size-20 place-items-center rounded-full bg-primary/95 text-white shadow-2xl transition-transform duration-200 hover:scale-110 active:scale-95"
-            aria-label="Phát video"
-          >
-            <Play className="size-8 sm:size-10 fill-current ml-1 text-white" />
-          </button>
-        </div>
-      )}
-
-      {/* Buffering Spinner (Only when actively loading/buffering) */}
-      {isLoading && !error && (
-        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/50 backdrop-blur-xs">
-          <div className="flex flex-col items-center gap-2.5">
-            <Loader2 className="size-11 animate-spin text-primary" />
-            <span className="text-xs text-white/85 font-medium drop-shadow">Đang tải luồng phim...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Muted Autoplay Indicator Notification */}
-      {mutedAutoplayNotice && isPlaying && isMuted && !isScreenLocked && (
-        <button
-          type="button"
-          onClick={() => {
+      {/* Netflix-style Player Bottom Bar with Scrubber & Settings */}
+      <PlayerBottomControls
+        showControls={showControls}
+        isScreenLocked={isScreenLocked}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={duration}
+        bufferedEnd={bufferedEnd}
+        hoverTime={hoverTime}
+        hoverPosition={hoverPosition}
+        volume={volume}
+        isMuted={isMuted}
+        canAdjustVolume={canAdjustVolume}
+        isVolumeSliderOpen={isVolumeSliderOpen}
+        isTouchDevice={isTouchDevice}
+        hasNextEpisode={hasNextEpisode}
+        isSettingsOpen={isSettingsOpen}
+        activeSettingsTab={activeSettingsTab}
+        playbackSpeed={playbackSpeed}
+        qualities={qualities}
+        currentQualityIndex={currentQualityIndex}
+        audioBoostFactor={audioBoostFactor}
+        aspectRatio={aspectRatio}
+        preferM3U8={preferM3U8}
+        embedUrl={embedUrl}
+        isLandscape={isLandscape}
+        settingsRef={settingsRef}
+        onTogglePlay={togglePlay}
+        onSeekBy={seekBy}
+        onVolumeButtonClick={() => {
+          if (isTouchDevice) {
+            setIsVolumeSliderOpen((prev) => !prev);
+          } else {
             toggleMute();
-            setMutedAutoplayNotice(false);
-          }}
-          className="absolute top-16 left-4 z-30 inline-flex items-center gap-2 rounded-full bg-primary/95 px-3.5 py-1.5 text-xs font-bold text-white shadow-xl backdrop-blur-md hover:bg-primary transition-all active:scale-95 animate-in fade-in"
-        >
-          <VolumeX className="size-4" />
-          <span>Bấm để bật âm thanh 🔊</span>
-        </button>
-      )}
-
-      {/* Double Tap Seek Feedback Overlay (+10s right / -10s left) */}
-      {doubleTapFeedback && (
-        <div
-          data-testid={`double-tap-${doubleTapFeedback.side}-feedback`}
-          className={cn(
-            "pointer-events-none absolute inset-y-0 z-30 flex w-1/2 items-center justify-center select-none overflow-hidden",
-            doubleTapFeedback.side === "left" ? "left-0" : "right-0",
-          )}
-        >
-          {/* Semi-circular curved ripple glow backdrop */}
-          <div
-            className={cn(
-              "absolute inset-y-0 w-full transition-all duration-300",
-              doubleTapFeedback.side === "left"
-                ? "left-0 bg-gradient-to-r from-white/20 via-white/10 to-transparent rounded-r-full"
-                : "right-0 bg-gradient-to-l from-white/20 via-white/10 to-transparent rounded-l-full",
-            )}
-          />
-
-          {/* Center animated badge */}
-          <div className="relative z-10 flex flex-col items-center gap-1.5 text-white animate-double-tap">
-            <div className="grid size-14 sm:size-16 place-items-center rounded-full bg-black/75 backdrop-blur-md border border-white/25 shadow-2xl text-white">
-              {doubleTapFeedback.side === "left" ? (
-                <RotateCcw className="size-7 sm:size-8 stroke-[2.5] text-white -rotate-12 transition-transform duration-200" />
-              ) : (
-                <RotateCw className="size-7 sm:size-8 stroke-[2.5] text-white rotate-12 transition-transform duration-200" />
-              )}
-            </div>
-            <span className="text-base sm:text-lg font-black tracking-wider text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-              {doubleTapFeedback.side === "left" ? `-${doubleTapFeedback.seconds}s` : `+${doubleTapFeedback.seconds}s`}
-            </span>
-            <span className="text-[10px] sm:text-[11px] font-bold text-white/80 uppercase tracking-widest drop-shadow">
-              {doubleTapFeedback.side === "left"
-                ? `Lùi ${doubleTapFeedback.seconds} giây`
-                : `Tua ${doubleTapFeedback.seconds} giây`}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Seek Feedback Animation (+10s, -10s) */}
-      {seekFeedback && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center z-30">
-          <div className="flex items-center gap-1 rounded-full bg-black/80 px-5 py-2.5 text-lg font-bold text-white shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-            {seekFeedback.startsWith("+") ? <RotateCw className="size-5" /> : <RotateCcw className="size-5" />}
-            <span>{seekFeedback}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Top Bar: Title & Episode */}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/85 via-black/40 to-transparent p-4 sm:p-6 transition-opacity duration-300",
-          (!isScreenLocked && (showControls || !isPlaying)) ? "opacity-100" : "opacity-0",
-        )}
-      >
-        <div>
-          <h2 className="font-display text-sm sm:text-base font-bold text-white line-clamp-1 drop-shadow-md">
-            {title}
-          </h2>
-          {episodeName && (
-            <p className="text-xs text-white/70 font-medium mt-0.5">
-              {episodeName.toLowerCase().includes("tập") ? episodeName : `Tập ${episodeName}`}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom Bar: Netflix-style Controls */}
-      <div
-        className={cn(
-          "absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 sm:px-5 pb-3 sm:pb-4 pt-12 transition-opacity duration-300",
-          (!isScreenLocked && (showControls || !isPlaying)) ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
-        )}
-        onClick={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-      >
-        {/* Interactive Scrub Timeline Bar */}
-        <div
-          onClick={handleTimelineScrub}
-          onTouchStart={handleTimelineScrubTouch}
-          onTouchMove={handleTimelineScrubTouch}
-          onMouseMove={handleTimelineHover}
-          onMouseLeave={() => setHoverTime(null)}
-          className="group/timeline relative mb-3.5 flex h-4 w-full cursor-pointer items-center"
-        >
-          {/* Hover Time Tooltip */}
-          {hoverTime !== null && (
-            <div
-              style={{ left: `${hoverPosition}%` }}
-              className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded bg-black/90 px-2 py-0.5 text-[11px] font-bold text-white shadow-md border border-white/10"
-            >
-              {formatTime(hoverTime)}
-            </div>
-          )}
-
-          {/* Background Track */}
-          <div className="relative h-1 w-full rounded-full bg-white/20 transition-all group-hover/timeline:h-2">
-            {/* Buffered Bar */}
-            <div
-              style={{ width: `${Math.min(100, bufferPercent)}%` }}
-              className="absolute inset-y-0 left-0 rounded-full bg-white/40"
-            />
-            {/* Played Progress Bar */}
-            <div
-              style={{ width: `${Math.min(100, progressPercent)}%` }}
-              className="absolute inset-y-0 left-0 rounded-full bg-primary"
-            />
-            {/* Scrubber Thumb */}
-            <div
-              style={{ left: `${Math.min(100, progressPercent)}%` }}
-              className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-lg ring-2 ring-white opacity-0 transition-opacity group-hover/timeline:opacity-100"
-            />
-          </div>
-        </div>
-
-        {/* Buttons Row */}
-        <div className="flex items-center justify-between text-white">
-          {/* Left Controls: Play, 10s back, 10s forward, Volume, Time */}
-          <div className="flex items-center gap-0.5 sm:gap-2">
-            {/* Play / Pause */}
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors"
-              aria-label={isPlaying ? "Tạm dừng" : "Phát"}
-            >
-              {isPlaying ? <Pause className="size-4 sm:size-5 fill-current" /> : <Play className="size-4 sm:size-5 fill-current ml-0.5" />}
-            </button>
-
-            {/* Rewind 10s */}
-            <button
-              type="button"
-              onClick={() => seekBy(-10)}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
-              title="Lùi 10 giây (←)"
-            >
-              <RotateCcw className="size-3.5 sm:size-4" />
-            </button>
-
-            {/* Forward 10s */}
-            <button
-              type="button"
-              onClick={() => seekBy(10)}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
-              title="Tua tới 10 giây (→)"
-            >
-              <RotateCw className="size-3.5 sm:size-4" />
-            </button>
-
-            {/* Volume Control with smooth custom slide-out track and Volume Boost up to 200% */}
-            <div className="group/vol relative flex items-center">
-              <button
-                type="button"
-                onClick={handleVolumeButtonClick}
-                className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full text-white/90 hover:text-white hover:bg-white/15 transition-colors"
-                title={isTouchDevice ? "Điều chỉnh âm lượng & Khuếch đại" : "Bật/Tắt âm thanh (M)"}
-                aria-label={isTouchDevice ? "Điều chỉnh âm lượng" : "Bật/Tắt âm thanh"}
-                aria-expanded={isVolumeSliderOpen}
-                aria-controls="mobile-volume-slider"
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="size-4 sm:size-5 text-primary" />
-                ) : volume < 0.5 ? (
-                  <Volume1 className="size-4 sm:size-5" />
-                ) : volume <= 1 ? (
-                  <Volume2 className="size-4 sm:size-5" />
-                ) : (
-                  <Volume2 className="size-4 sm:size-5 text-primary drop-shadow-[0_0_6px_rgba(229,9,20,0.6)]" />
-                )}
-              </button>
-
-              {/* Desktop volume slider (Range 0 - 100%) */}
-              <div
-                className={cn(
-                  "h-9 w-0 items-center overflow-hidden transition-all duration-200 ease-out",
-                  !isTouchDevice && "hidden sm:flex group-hover/vol:w-20 group-hover/vol:px-1.5",
-                )}
-              >
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={isMuted ? 0 : volume}
-                  onChange={(event) => changeVolume(Number(event.currentTarget.value))}
-                  aria-label="Âm lượng video"
-                  title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
-                  className="h-4 w-full cursor-pointer accent-primary"
-                  disabled={!canAdjustVolume}
-                />
-              </div>
-
-              {/* Mobile volume popover */}
-              {isTouchDevice && isVolumeSliderOpen && (
-                <div
-                  id="mobile-volume-slider"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-[#181818]/95 p-3 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150"
-                >
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="font-semibold text-white">Âm lượng</span>
-                    <span className="font-bold text-white/70">
-                      {Math.round((isMuted ? 0 : volume) * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={isMuted ? 0 : volume}
-                    onChange={(event) => changeVolume(Number(event.currentTarget.value))}
-                    aria-label="Âm lượng video"
-                    className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-                    disabled={!canAdjustVolume}
-                  />
-
-                  {/* Quick Volume Presets (25%, 50%, 75%, 100%) */}
-                  <div className="mt-2 mb-2 flex items-center gap-1.5">
-                    {[0.25, 0.5, 0.75, 1.0].map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => changeVolume(v, true)}
-                        className={cn(
-                          "flex-1 py-1 rounded text-[11px] font-bold transition-all",
-                          volume === v
-                            ? "bg-primary text-white shadow-sm shadow-primary/40 scale-105"
-                            : "bg-white/10 text-white/80 hover:bg-white/20 active:scale-95",
-                        )}
-                      >
-                        {Math.round(v * 100)}%
-                      </button>
-                    ))}
-                  </div>
-
-                  {canAdjustVolume ? (
-                    <button
-                      type="button"
-                      onClick={toggleMute}
-                      className="mt-1 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
-                      aria-label={isMuted ? "Bật tiếng" : "Tắt tiếng"}
-                    >
-                      {isMuted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-                      {isMuted ? "Bật tiếng" : "Tắt tiếng"}
-                    </button>
-                  ) : (
-                    <p className="mt-1 text-[11px] leading-4 text-white/60">
-                      iOS không cho trang web chỉnh mức âm lượng. Hãy dùng nút âm lượng của thiết bị.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Time Indicator (Netflix-style tabular mono font) */}
-            <div className="ml-1 sm:ml-2 flex items-center font-mono text-[10px] sm:text-xs tabular-nums select-none tracking-tight max-[360px]:hidden">
-              <span className="font-semibold text-white/95">{formatTime(currentTime)}</span>
-              <span className="mx-0.5 sm:mx-1 text-white/35">/</span>
-              <span className="text-white/55">{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Right Controls: Next Episode, Settings, PiP, Fullscreen */}
-          <div className="flex items-center gap-0.5 sm:gap-2">
-            {/* Next Episode Button (if available) */}
-            {hasNextEpisode && onNextEpisode && (
-              <button
-                type="button"
-                onClick={onNextEpisode}
-                className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 sm:px-2.5 sm:py-1.5 text-xs font-semibold hover:bg-white/20 transition-colors"
-                title="Tập tiếp theo (N)"
-              >
-                <span className="hidden sm:inline">Tập tiếp</span>
-                <SkipForward className="size-3.5 fill-current" />
-              </button>
-            )}
-
-            {/* Settings Button */}
-            <div ref={settingsRef} className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSettingsOpen((prev) => !prev);
-                  setActiveSettingsTab("main");
-                }}
-                className={cn(
-                  "grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 transition-colors",
-                  isSettingsOpen && "bg-white/20 text-primary",
-                )}
-                title="Cài đặt phát video"
-              >
-                <Settings className="size-4" />
-              </button>
-
-              {/* Netflix-style Settings Popover Menu */}
-              {isSettingsOpen && (
-                <div className="absolute bottom-11 sm:bottom-12 right-0 z-50 w-56 sm:w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-white/15 bg-[#181818]/95 p-2 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
-                  {/* Settings Main Tab */}
-                  {activeSettingsTab === "main" && (
-                    <div className="space-y-1">
-                      <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/50 border-b border-white/10 mb-1">
-                        Cài đặt phát video
-                      </div>
-
-                      {/* Speed item */}
-                      <button
-                        type="button"
-                        onClick={() => setActiveSettingsTab("speed")}
-                        className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Gauge className="size-4 text-white/70" />
-                          <span>Tốc độ phát</span>
-                        </span>
-                        <span className="flex items-center gap-1 text-white/60">
-                          <span>{playbackSpeed}x</span>
-                          <ChevronRight className="size-3.5" />
-                        </span>
-                      </button>
-
-                      {/* Quality item */}
-                      {preferM3U8 && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveSettingsTab("quality")}
-                          className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
-                        >
-                          <span className="flex items-center gap-2">
-                            <SlidersIcon className="size-4 text-white/70" />
-                            <span>Chất lượng</span>
-                          </span>
-                          <span className="flex items-center gap-1 text-white/60">
-                            <span>
-                              {currentQualityIndex === -1
-                                ? "Auto"
-                                : qualities.find((q) => q.index === currentQualityIndex)?.label}
-                            </span>
-                            <ChevronRight className="size-3.5" />
-                          </span>
-                        </button>
-                      )}
-
-                      {/* Audio Boost item */}
-                      <button
-                        type="button"
-                        onClick={() => setActiveSettingsTab("audio")}
-                        className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Volume2 className="size-4 text-white/70" />
-                          <span>Khuếch đại âm thanh</span>
-                        </span>
-                        <span className="flex items-center gap-1 text-white/60">
-                          <span className={audioBoostFactor > 1 ? "text-primary font-bold" : ""}>
-                            {`${Math.round(audioBoostFactor * 100)}%`}
-                          </span>
-                          <ChevronRight className="size-3.5" />
-                        </span>
-                      </button>
-
-                      {/* Ratio item */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAspectRatio((prev) => (prev === "contain" ? "cover" : "contain"));
-                          setIsSettingsOpen(false);
-                        }}
-                        className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Scaling className="size-4 text-white/70" />
-                          <span>Tỷ lệ khung hình</span>
-                        </span>
-                        <span className="text-white/60">
-                          {aspectRatio === "cover" ? "Phóng to (Cover)" : "Mặc định (16:9)"}
-                        </span>
-                      </button>
-
-                      {/* Switch to Embed Fallback if available */}
-                      {embedUrl && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUseEmbedFallback(true);
-                            setIsSettingsOpen(false);
-                          }}
-                          className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors text-white"
-                        >
-                          <span className="flex items-center gap-2">
-                            <span className="size-2 rounded-full bg-primary" />
-                            <span>Đổi sang Player dự phòng</span>
-                          </span>
-                          <span className="text-[11px] text-white/50">Embed</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Settings Speed Subtab */}
-                  {activeSettingsTab === "speed" && (
-                    <div className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setActiveSettingsTab("main")}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
-                      >
-                        <ChevronRight className="size-3.5 rotate-180" />
-                        <span>Tốc độ phát</span>
-                      </button>
-                      {PLAYBACK_SPEEDS.map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setSpeed(s)}
-                          className={cn(
-                            "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
-                            playbackSpeed === s ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
-                          )}
-                        >
-                          <span>{s === 1.0 ? "1.0x (Chuẩn)" : `${s}x`}</span>
-                          {playbackSpeed === s && <Check className="size-3.5" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Settings Quality Subtab */}
-                  {activeSettingsTab === "quality" && (
-                    <div className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setActiveSettingsTab("main")}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
-                      >
-                        <ChevronRight className="size-3.5 rotate-180" />
-                        <span>Chất lượng video</span>
-                      </button>
-                      {qualities.map((q) => (
-                        <button
-                          key={q.index}
-                          type="button"
-                          onClick={() => setQuality(q.index)}
-                          className={cn(
-                            "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
-                            currentQualityIndex === q.index ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
-                          )}
-                        >
-                          <span>{q.label}</span>
-                          {currentQualityIndex === q.index && <Check className="size-3.5" />}
-                        </button>
-                      ))}
-                      {qualities.length === 1 && (
-                        <p className="px-3 py-2 text-[11px] leading-4 text-white/55">
-                          Player không phát hiện thêm độ phân giải từ nguồn này.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Settings Audio Boost Subtab */}
-                  {activeSettingsTab === "audio" && (
-                    <div className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setActiveSettingsTab("main")}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1 transition-colors"
-                      >
-                        <ChevronRight className="size-3.5 rotate-180" />
-                        <span>Khuếch đại âm thanh</span>
-                      </button>
-                      <p className="px-3 pb-1.5 pt-0.5 text-[11px] leading-relaxed text-white/50">
-                        Tăng âm lượng nguồn phát và tự động chống rè tiếng.
-                      </p>
-                      {AUDIO_BOOST_LEVELS.map(({ val, label, badge }) => {
-                        const isSelected = audioBoostFactor === val;
-                        return (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => {
-                              setBoostLevel(val);
-                              setIsSettingsOpen(false);
-                            }}
-                            className={cn(
-                              "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
-                              isSelected ? "bg-primary text-white" : "hover:bg-white/10 text-white/80",
-                            )}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-10 text-left font-bold tabular-nums">{label}</span>
-                              <span
-                                className={cn(
-                                  "text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors",
-                                  isSelected ? "bg-white/20 text-white" : "bg-white/10 text-white/60",
-                                )}
-                              >
-                                {badge}
-                              </span>
-                            </div>
-                            {isSelected && <Check className="size-3.5 stroke-[2.5]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Picture-in-Picture (Hidden on small mobile screens) */}
-            <button
-              type="button"
-              onClick={togglePiP}
-              className="hidden sm:grid size-9 place-items-center rounded-full hover:bg-white/15 transition-colors text-white/90 hover:text-white"
-              title="Hình trong hình (PiP)"
-            >
-              <PictureInPicture2 className="size-4" />
-            </button>
-
-            {/* Screen Lock Button (Red icon button) */}
-            <button
-              type="button"
-              onClick={handleLockScreen}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all text-white/90 hover:text-white"
-              title="Khóa màn hình"
-              aria-label="Khóa màn hình"
-            >
-              <Lock className="size-4 text-primary" />
-            </button>
-
-            {/* Landscape / Portrait Orientation Toggle (Right button) */}
-            <button
-              type="button"
-              onClick={handleToggleScreenOrientation}
-              className="grid size-7 min-[400px]:size-8 sm:size-9 place-items-center rounded-full hover:bg-white/15 active:scale-90 transition-all text-white/90 hover:text-white"
-              title={
-                isLandscapeView || isFullscreen || isManualFullscreen
-                  ? "Chế độ dọc (F)"
-                  : "Xoay ngang màn hình (F)"
-              }
-              aria-label={
-                isLandscapeView || isFullscreen || isManualFullscreen
-                  ? "Chế độ dọc"
-                  : "Xoay ngang màn hình"
-              }
-            >
-              {isLandscapeView || isFullscreen || isManualFullscreen ? (
-                <Minimize className="size-4 sm:size-5" />
-              ) : (
-                <Maximize className="size-4 sm:size-5" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+          }
+        }}
+        onVolumeChange={changeVolume}
+        onToggleMute={toggleMute}
+        onToggleSettings={() => {
+          setIsSettingsOpen((prev) => !prev);
+          setActiveSettingsTab("main");
+        }}
+        onSetActiveTab={setActiveSettingsTab}
+        onSetSpeed={setSpeed}
+        onSetQuality={setQuality}
+        onSetAudioBoost={(val) => setBoostLevel(val, triggerToast)}
+        onToggleAspectRatio={() => {
+          setAspectRatio((prev) => (prev === "contain" ? "cover" : "contain"));
+          setIsSettingsOpen(false);
+        }}
+        onSwitchToEmbed={() => {
+          setUseEmbedFallback(true);
+          setIsSettingsOpen(false);
+        }}
+        onTogglePiP={togglePiP}
+        onLockScreen={handleLockScreen}
+        onToggleOrientation={handleToggleScreenOrientation}
+        onNextEpisode={onNextEpisode}
+        onTimelineClick={handleTimelineScrub}
+        onTimelineTouch={handleTimelineScrubTouch}
+        onTimelineHover={handleTimelineHover}
+        onTimelineMouseLeave={() => setHoverTime(null)}
+      />
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}
-      {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && !isScreenLocked && (
-        <div className="absolute bottom-20 right-4 z-30 flex items-center gap-3 rounded-xl border border-white/20 bg-black/85 p-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 duration-300">
-          <div className="text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Tập tiếp theo</p>
-            <p className="text-xs font-bold text-white">Chuyển sau {autoNextCountdown}s...</p>
-          </div>
-          <button
-            type="button"
-            onClick={onNextEpisode}
-            className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
-          >
-            <span>Xem ngay</span>
-            <SkipForward className="size-3.5 fill-current" />
-          </button>
-        </div>
-      )}
-
-      {/* Error Overlay */}
-      {error && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 p-4 text-center">
-          <AlertCircle className="mb-2 size-10 text-primary" />
-          <p className="text-sm font-semibold text-white">{error}</p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setError(null);
-                setIsLoading(true);
-                if (videoRef.current) {
-                  videoRef.current.load();
-                }
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white shadow-lg transition-transform hover:scale-105"
-            >
-              <span>Thử lại</span>
-            </button>
-            {embedUrl && (
-              <button
-                type="button"
-                onClick={() => setUseEmbedFallback(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/25"
-              >
-                <span>Máy chủ dự phòng</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <NextEpisodePrompt
+        countdown={autoNextCountdown}
+        hasNextEpisode={hasNextEpisode}
+        isScreenLocked={isScreenLocked}
+        onNextEpisode={onNextEpisode}
+      />
     </div>
-  );
-}
-
-// Icon helper
-function SlidersIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <line x1="4" y1="21" x2="4" y2="14" />
-      <line x1="4" y1="10" x2="4" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12" y2="3" />
-      <line x1="20" y1="21" x2="20" y2="16" />
-      <line x1="20" y1="12" x2="20" y2="3" />
-      <line x1="1" y1="14" x2="7" y2="14" />
-      <line x1="9" y1="8" x2="15" y2="8" />
-      <line x1="17" y1="16" x2="23" y2="16" />
-    </svg>
   );
 }
