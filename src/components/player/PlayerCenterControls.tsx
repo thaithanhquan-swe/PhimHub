@@ -56,11 +56,6 @@ export function PlayerCenterControls({
               e.stopPropagation();
               onTogglePlay();
             }}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => {
-              e.stopPropagation();
-              onTogglePlay();
-            }}
             className="pointer-events-auto grid size-16 sm:size-20 place-items-center rounded-full bg-primary/95 text-white shadow-2xl transition-transform duration-200 hover:scale-110 active:scale-95"
             aria-label="Phát video"
           >

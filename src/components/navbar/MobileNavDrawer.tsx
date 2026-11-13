@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
@@ -13,6 +13,7 @@ interface MobileNavDrawerProps {
   currentGenre: string | null;
   currentCountry: string | null;
   onFilterChange: (key: "genre" | "country", val: string) => void;
+  onInstall?: () => void;
 }
 
 export function MobileNavDrawer({
@@ -22,6 +23,7 @@ export function MobileNavDrawer({
   currentGenre,
   currentCountry,
   onFilterChange,
+  onInstall,
 }: MobileNavDrawerProps) {
   if (!isOpen) return null;
 
@@ -124,6 +126,30 @@ export function MobileNavDrawer({
                 {c.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* PWA Download Card in Drawer */}
+        <div className="mb-4 rounded-xl border border-primary/30 bg-primary/10 p-3">
+          <div className="flex items-start gap-3">
+            <div className="grid size-9 shrink-0 place-items-center rounded-2xl bg-primary text-white shadow-md shadow-primary/30">
+              <Download className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-xs font-bold text-white">Tải ứng dụng PhimHub</h4>
+              <p className="mt-0.5 text-[11px] text-white/70">Xem phim toàn màn hình mượt mà, không quảng cáo.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onInstall?.();
+                }}
+                className="mt-2.5 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white shadow-md hover:bg-primary/90 transition-all active:scale-95"
+              >
+                <Download className="size-3.5" />
+                <span>Cài đặt ứng dụng</span>
+              </button>
+            </div>
           </div>
         </div>
 

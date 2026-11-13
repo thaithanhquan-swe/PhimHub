@@ -40,7 +40,7 @@ export function AssistiveTouchLock({
       onPointerCancel={onPointerUp}
       className={cn(
         "absolute top-0 left-0 z-50 select-none cursor-grab active:cursor-grabbing",
-        !lockButtonPos && "left-3.5 sm:left-4 top-1/2 -translate-y-1/2",
+        !lockButtonPos && "right-3.5 sm:right-4 left-auto top-1/2 -translate-y-1/2",
         isDraggingLock ? "transition-none" : "transition-all duration-300 ease-out",
         showUnlockButton || isDraggingLock
           ? "opacity-100 scale-100 pointer-events-auto"

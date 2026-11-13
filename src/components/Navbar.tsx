@@ -1,10 +1,12 @@
-import { Menu } from "lucide-react";
+import { Download, Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DropdownFilter } from "@/components/DropdownFilter";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
+import { PwaInstallModal } from "@/components/PwaInstallModal";
+import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { cn } from "@/lib/utils";
 import { FILTER_OPTIONS } from "@/services/movieApi";
 import {
@@ -12,9 +14,10 @@ import {
   MobileNavDrawer,
   PRIMARY_NAV_ITEMS,
   SearchAutocomplete,
-} from "./navbar";
+} from "@/components/navbar/index";
 
 export function Navbar() {
+  const { isInstalled, isIOS, showGuide, setShowGuide, triggerInstall } = usePwaInstall();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -161,9 +164,22 @@ export function Navbar() {
           </div>
         </nav>
 
-        {/* Responsive Search Bar + Provider Status Badge */}
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-1 max-w-[200px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
+        {/* Responsive Search Bar + Provider Status Badge + PWA Download */}
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[240px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
+
+          {/* PWA Download / Install App Button */}
+          <button
+            type="button"
+            onClick={triggerInstall}
+            className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/20 px-2 sm:px-3 py-1.5 text-xs font-bold text-white hover:bg-primary transition-all active:scale-95 shrink-0 group shadow-sm"
+            title="Tải ứng dụng PhimHub (PWA)"
+            aria-label="Cài đặt ứng dụng PhimHub"
+          >
+            <Download className="size-3.5 sm:size-4 text-primary group-hover:text-white transition-colors" />
+            <span className="hidden min-[450px]:inline text-[11px] sm:text-xs">Tải App</span>
+          </button>
+
           <SearchAutocomplete />
         </div>
       </header>
@@ -176,10 +192,20 @@ export function Navbar() {
         currentGenre={currentGenre}
         currentCountry={currentCountry}
         onFilterChange={handleNavbarFilter}
+        onInstall={triggerInstall}
       />
 
       {/* Mobile Bottom Navigation (5 tabs) */}
       <MobileBottomNav isItemActive={isItemActive} />
+
+      {/* PWA Install Guide Modal */}
+      <PwaInstallModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        isIOS={isIOS}
+        isInstalled={isInstalled}
+        onInstall={triggerInstall}
+      />
     </>
   );
 }

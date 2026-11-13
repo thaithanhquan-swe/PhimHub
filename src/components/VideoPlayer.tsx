@@ -35,6 +35,7 @@ export function VideoPlayer({
   const settingsRef = useRef<HTMLDivElement>(null);
   const hideControlsTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const lastTogglePlayTimeRef = useRef(0);
 
   // Volume & Audio boost
   const [volume, setVolume] = useState(() => {
@@ -173,6 +174,10 @@ export function VideoPlayer({
 
   // Playback control actions
   function togglePlay() {
+    const now = Date.now();
+    if (now - lastTogglePlayTimeRef.current < 350) return;
+    lastTogglePlayTimeRef.current = now;
+
     const video = videoRef.current;
     if (!video) return;
     resumeAudioContext();
