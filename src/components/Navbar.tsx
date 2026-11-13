@@ -1,82 +1,40 @@
-import {
-  Bookmark,
-  Calendar,
-  Clapperboard,
-  Film,
-  Home,
-  Menu,
-  Search,
-  Tv,
-  X,
-} from "lucide-react";
+import { Menu } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DropdownFilter } from "@/components/DropdownFilter";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { cn } from "@/lib/utils";
-import { FILTER_OPTIONS, searchMovies } from "@/services/movieApi";
+import { FILTER_OPTIONS } from "@/services/movieApi";
+import {
+  MobileBottomNav,
+  MobileNavDrawer,
+  PRIMARY_NAV_ITEMS,
+  SearchAutocomplete,
+} from "./navbar";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [showNavbarSuggestions, setShowNavbarSuggestions] = useState(false);
-  const [isHoveringNavbarSuggestions, setIsHoveringNavbarSuggestions] = useState(false);
-  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const suggestionQuery = useQuery({
-    queryKey: ["movie-search", debouncedQuery],
-    queryFn: ({ signal }) => searchMovies(debouncedQuery, 1, signal),
-    enabled: searchFocused && debouncedQuery.length >= 2,
-  });
-  const suggestions =
-    searchFocused && showNavbarSuggestions && query.trim() === debouncedQuery
-      ? (suggestionQuery.data ?? []).slice(0, 5)
-      : [];
-
-  // Tự động ẩn dropdown gợi ý sau khoảng 3, 4 giây nếu người dùng không tương tác
-  useEffect(() => {
-    if (!showNavbarSuggestions || !searchFocused) return;
-    if (isHoveringNavbarSuggestions) return;
-
-    const timer = window.setTimeout(() => {
-      setShowNavbarSuggestions(false);
-    }, 3500);
-
-    return () => window.clearTimeout(timer);
-  }, [showNavbarSuggestions, searchFocused, debouncedQuery, suggestionQuery.data, isHoveringNavbarSuggestions]);
 
   // Close mobile drawer on route change
   useEffect(() => {
     setMobileMenuOpen(false);
-    setSearchFocused(false);
   }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   // Prevent background scroll when mobile menu is open
   useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
 
+  // Track window scroll for glassmorphism header
   useEffect(() => {
     let frame = 0;
     const handleScroll = () => {
@@ -94,27 +52,7 @@ export function Navbar() {
     };
   }, []);
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const value = query.trim();
-    const selected = suggestions[activeSuggestionIndex];
-    if (selected) {
-      navigate(`/movie/${selected.slug || selected.id}`);
-      setQuery("");
-      setSearchFocused(false);
-      setShowNavbarSuggestions(false);
-      setActiveSuggestionIndex(-1);
-      return;
-    }
-    if (value) {
-      navigate(`/search?q=${encodeURIComponent(value)}`);
-      setQuery("");
-      setSearchFocused(false);
-      setShowNavbarSuggestions(false);
-    }
-  }
-
-  // Accurately determine which nav link is active based on path and query parameters
+  // Determine active navigation item based on path and query parameters
   const currentPath = location.pathname;
   const currentType = searchParams.get("type");
   const currentGenre = searchParams.get("genre");
@@ -133,24 +71,12 @@ export function Navbar() {
         !isSavedList
       );
     }
-    if (id === "tv") {
-      return currentPath === "/" && currentType === "tv";
-    }
-    if (id === "movie") {
-      return currentPath === "/" && currentType === "movie";
-    }
-    if (id === "hoat-hinh") {
-      return currentPath === "/" && currentType === "hoat-hinh";
-    }
-    if (id === "schedule") {
-      return currentPath === "/schedule";
-    }
-    if (id === "search") {
-      return currentPath === "/search";
-    }
-    if (id === "saved") {
-      return isSavedList;
-    }
+    if (id === "tv") return currentPath === "/" && currentType === "tv";
+    if (id === "movie") return currentPath === "/" && currentType === "movie";
+    if (id === "hoat-hinh") return currentPath === "/" && currentType === "hoat-hinh";
+    if (id === "schedule") return currentPath === "/schedule";
+    if (id === "search") return currentPath === "/search";
+    if (id === "saved") return isSavedList;
     return false;
   }
 
@@ -164,14 +90,6 @@ export function Navbar() {
     next.delete("page");
     navigate(`/?${next.toString()}`);
   }
-
-  const PRIMARY_NAV = [
-    { id: "home", label: "Trang chủ", to: "/" },
-    { id: "tv", label: "Phim bộ", to: "/?type=tv" },
-    { id: "movie", label: "Phim lẻ", to: "/?type=movie" },
-    { id: "hoat-hinh", label: "Hoạt hình", to: "/?type=hoat-hinh" },
-    { id: "schedule", label: "Lịch chiếu", to: "/schedule" },
-  ];
 
   return (
     <>
@@ -199,7 +117,7 @@ export function Navbar() {
 
         {/* Desktop Navigation Links */}
         <nav className="hidden items-center gap-4 lg:flex xl:gap-6" aria-label="Điều hướng chính">
-          {PRIMARY_NAV.map(({ id, label, to }) => {
+          {PRIMARY_NAV_ITEMS.map(({ id, label, to }) => {
             const active = isItemActive(id);
             return (
               <Link
@@ -217,7 +135,7 @@ export function Navbar() {
             );
           })}
 
-          {/* Minimalist Dropdowns in Header: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
+          {/* Minimalist Dropdowns: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
           <div className="flex items-center gap-1 xl:gap-2 border-l border-white/10 pl-3 xl:pl-4">
             <DropdownFilter
               label="Thể loại"
@@ -243,256 +161,25 @@ export function Navbar() {
           </div>
         </nav>
 
-        {/* Responsive Search Bar + Real-time Provider Status Badge */}
+        {/* Responsive Search Bar + Provider Status Badge */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-1 max-w-[200px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[650px] xl:max-w-[720px] justify-end">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
-
-          <form onSubmit={submitSearch} className="relative flex-1 min-w-[95px] sm:min-w-[140px]">
-            <div className="relative flex h-9 sm:h-10 w-full items-center gap-2 rounded-full border border-white/20 bg-black/50 px-3 sm:px-4 backdrop-blur-md transition-all duration-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 focus-within:bg-black/80">
-              <Search className="size-3.5 sm:size-4 shrink-0 text-white/70" />
-              <input
-                value={query}
-                onChange={(event) => {
-                  const val = event.target.value;
-                  setQuery(val);
-                  setActiveSuggestionIndex(-1);
-                  if (val.trim().length >= 2) {
-                    setShowNavbarSuggestions(true);
-                  } else {
-                    setShowNavbarSuggestions(false);
-                  }
-                }}
-                onFocus={() => {
-                  setSearchFocused(true);
-                  if (query.trim().length >= 2) {
-                    setShowNavbarSuggestions(true);
-                  }
-                }}
-                onBlur={() => setSearchFocused(false)}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" && suggestions.length > 0) {
-                    event.preventDefault();
-                    setShowNavbarSuggestions(true);
-                    setActiveSuggestionIndex((index) => (index + 1) % suggestions.length);
-                  } else if (event.key === "ArrowUp" && suggestions.length > 0) {
-                    event.preventDefault();
-                    setShowNavbarSuggestions(true);
-                    setActiveSuggestionIndex((index) => (index <= 0 ? suggestions.length - 1 : index - 1));
-                  } else if (event.key === "Escape") {
-                    setSearchFocused(false);
-                    setShowNavbarSuggestions(false);
-                    setActiveSuggestionIndex(-1);
-                  }
-                }}
-                placeholder="Tìm phim..."
-                aria-label="Tìm phim"
-                aria-autocomplete="list"
-                aria-expanded={suggestions.length > 0}
-                aria-controls="navbar-search-suggestions"
-                role="combobox"
-                className="w-full bg-transparent text-xs sm:text-sm outline-none placeholder:text-white/45 text-white pr-1"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    setShowNavbarSuggestions(false);
-                  }}
-                  className="grid size-5 place-items-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
-                  aria-label="Xóa từ khóa"
-                >
-                  <X className="size-3" />
-                </button>
-              )}
-            </div>
-            {suggestions.length > 0 && (
-              <ul
-                id="navbar-search-suggestions"
-                role="listbox"
-                aria-label="Gợi ý phim"
-                onMouseEnter={() => setIsHoveringNavbarSuggestions(true)}
-                onMouseLeave={() => setIsHoveringNavbarSuggestions(false)}
-                className="absolute right-0 top-full z-[60] mt-2 w-[min(90vw,26rem)] overflow-hidden rounded-xl border border-white/10 bg-[#181818] p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200"
-              >
-                {suggestions.map((movie, index) => (
-                  <li key={movie.id || movie.slug} role="option" aria-selected={index === activeSuggestionIndex}>
-                    <button
-                      type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        navigate(`/movie/${movie.slug || movie.id}`);
-                        setQuery("");
-                        setSearchFocused(false);
-                        setActiveSuggestionIndex(-1);
-                      }}
-                      className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                        index === activeSuggestionIndex ? "bg-white/15" : "hover:bg-white/10"
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-white">{movie.title}</span>
-                        <span className="block truncate text-xs text-white/50">
-                          {movie.originalTitle || movie.kind}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-white/50">{movie.year}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </form>
+          <SearchAutocomplete />
         </div>
       </header>
 
       {/* Mobile Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <aside className="fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col bg-[#141416] p-4 shadow-2xl border-r border-white/10 animate-in slide-in-from-left duration-250 overflow-y-auto">
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
-              <Link to="/" onClick={() => setMobileMenuOpen(false)}>
-                <Logo />
-              </Link>
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                className="grid size-8 place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10"
-                aria-label="Đóng menu"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* Quick Navigation Links */}
-            <div className="space-y-1 mb-6">
-              <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-white/40 mb-2">
-                Danh mục chính
-              </p>
-              {[
-                { id: "home", label: "Trang chủ", to: "/", icon: Home },
-                { id: "tv", label: "Phim bộ", to: "/?type=tv", icon: Tv },
-                { id: "movie", label: "Phim lẻ", to: "/?type=movie", icon: Film },
-                { id: "hoat-hinh", label: "Hoạt hình & Anime", to: "/?type=hoat-hinh", icon: Clapperboard },
-                { id: "schedule", label: "Lịch chiếu phim", to: "/schedule", icon: Calendar },
-                { id: "saved", label: "Phim đã lưu", to: "/?list=saved", icon: Bookmark },
-              ].map(({ id, label, to, icon: Icon }) => {
-                const active = isItemActive(id);
-                return (
-                  <Link
-                    key={id}
-                    to={to}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
-                      active
-                        ? "bg-primary text-white shadow-md shadow-primary/30"
-                        : "text-white/80 hover:bg-white/10 hover:text-white",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    <span>{label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-
-            {/* Popular Genres shortcuts */}
-            <div className="mb-6 border-t border-white/10 pt-4">
-              <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-white/40 mb-2">
-                Thể loại nổi bật
-              </p>
-              <div className="grid grid-cols-2 gap-1 px-1">
-                {FILTER_OPTIONS.genres.slice(1, 9).map((g) => (
-                  <button
-                    key={g.value}
-                    type="button"
-                    onClick={() => {
-                      handleNavbarFilter("genre", g.value);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "rounded-lg px-2.5 py-1.5 text-xs text-left font-medium transition-colors line-clamp-1",
-                      currentGenre === g.value
-                        ? "bg-primary text-white font-bold"
-                        : "text-white/70 hover:bg-white/10 hover:text-white",
-                    )}
-                  >
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Countries shortcuts */}
-            <div className="mb-6 border-t border-white/10 pt-4">
-              <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-white/40 mb-2">
-                Quốc gia
-              </p>
-              <div className="grid grid-cols-2 gap-1 px-1">
-                {FILTER_OPTIONS.countries.slice(1, 7).map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => {
-                      handleNavbarFilter("country", c.value);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "rounded-lg px-2.5 py-1.5 text-xs text-left font-medium transition-colors line-clamp-1",
-                      currentCountry === c.value
-                        ? "bg-primary text-white font-bold"
-                        : "text-white/70 hover:bg-white/10 hover:text-white",
-                    )}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer Status in Drawer */}
-            <div className="mt-auto border-t border-white/10 pt-4 text-xs text-white/50">
-              <p className="mb-2 text-[11px] font-semibold text-white/70">Hạ tầng phát video:</p>
-              <ProviderStatusBadge />
-            </div>
-          </aside>
-        </div>
-      )}
+      <MobileNavDrawer
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        isItemActive={isItemActive}
+        currentGenre={currentGenre}
+        currentCountry={currentCountry}
+        onFilterChange={handleNavbarFilter}
+      />
 
       {/* Mobile Bottom Navigation (5 tabs) */}
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#121212]/95 backdrop-blur-lg pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] lg:hidden shadow-2xl mobile-bottom-nav"
-        aria-label="Điều hướng di động"
-      >
-        {[
-          { id: "home", label: "Trang chủ", to: "/", icon: Home },
-          { id: "tv", label: "Phim bộ", to: "/?type=tv", icon: Tv },
-          { id: "movie", label: "Phim lẻ", to: "/?type=movie", icon: Film },
-          { id: "schedule", label: "Lịch chiếu", to: "/schedule", icon: Calendar },
-          { id: "saved", label: "Đã lưu", to: "/?list=saved", icon: Bookmark },
-        ].map(({ id, label, to, icon: Icon }) => {
-          const active = isItemActive(id);
-          return (
-            <Link
-              key={id}
-              to={to}
-              className={cn(
-                "flex flex-col items-center justify-center gap-0.5 py-1 min-h-[44px] text-[10px] font-medium transition-all active:scale-95 select-none",
-                active ? "text-[#ff5964] font-bold" : "text-white/70 hover:text-white",
-              )}
-            >
-              <Icon className="size-4.5 shrink-0" />
-              <span className="truncate max-w-[62px] text-center leading-tight">{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <MobileBottomNav isItemActive={isItemActive} />
     </>
   );
 }
