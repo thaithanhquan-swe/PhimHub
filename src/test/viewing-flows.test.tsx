@@ -223,6 +223,32 @@ describe("player settings", () => {
     expect(screen.getByText("+20s")).toBeTruthy();
     expect(screen.getByText("Tua 20 giây")).toBeTruthy();
   });
+
+  it("renders the draggable AssistiveTouch lock button when locked and unlocks on tap", () => {
+    render(<VideoPlayer title="Test Movie" initialTime={10} />);
+    
+    // Lock the screen
+    fireEvent.click(screen.getByTitle("Khóa màn hình"));
+    expect(screen.getByText("Đã khóa màn hình")).toBeTruthy();
+
+    const lockButton = screen.getByTestId("assistive-lock-button");
+    expect(lockButton).toBeTruthy();
+    expect(screen.getByLabelText("Mở khóa màn hình")).toBeTruthy();
+
+    // Drag the button
+    fireEvent.pointerDown(lockButton, { clientX: 20, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(lockButton, { clientX: 180, clientY: 220, pointerId: 1 });
+    fireEvent.pointerUp(lockButton, { clientX: 180, clientY: 220, pointerId: 1 });
+
+    // It is still locked after dragging (did not unlock while dragging)
+    expect(screen.getByTestId("assistive-lock-button")).toBeTruthy();
+
+    // Tap without dragging unlocks the screen
+    fireEvent.pointerDown(lockButton, { clientX: 180, clientY: 220, pointerId: 1 });
+    fireEvent.pointerUp(lockButton, { clientX: 180, clientY: 220, pointerId: 1 });
+    expect(screen.getByText("Đã mở khóa màn hình")).toBeTruthy();
+    expect(screen.queryByTestId("assistive-lock-button")).toBeNull();
+  });
 });
 
 describe("IMDb metadata", () => {
