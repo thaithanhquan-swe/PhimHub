@@ -174,6 +174,55 @@ describe("player settings", () => {
 
     expect(screen.queryByText("Cài đặt phát video")).toBeNull();
   });
+
+  it("seeks forward 10s and shows feedback when double tapping the right side", () => {
+    render(<VideoPlayer title="Test Movie" initialTime={30} />);
+    const surface = screen.getByTestId("video-gesture-surface");
+
+    // Double tap right (clientX = 650)
+    fireEvent.click(surface, { clientX: 650 });
+    fireEvent.click(surface, { clientX: 650 });
+
+    expect(screen.getByTestId("double-tap-right-feedback")).toBeTruthy();
+    expect(screen.getByText("+10s")).toBeTruthy();
+    expect(screen.getByText("Tua 10 giây")).toBeTruthy();
+  });
+
+  it("seeks backward 10s and shows feedback when double tapping the left side", () => {
+    render(<VideoPlayer title="Test Movie" initialTime={30} />);
+    const surface = screen.getByTestId("video-gesture-surface");
+
+    // Double tap left (clientX = 100)
+    fireEvent.click(surface, { clientX: 100 });
+    fireEvent.click(surface, { clientX: 100 });
+
+    expect(screen.getByTestId("double-tap-left-feedback")).toBeTruthy();
+    expect(screen.getByText("-10s")).toBeTruthy();
+    expect(screen.getByText("Lùi 10 giây")).toBeTruthy();
+  });
+
+  it("supports touch double tap and accumulates seek on subsequent taps", () => {
+    render(<VideoPlayer title="Test Movie" initialTime={30} />);
+    const surface = screen.getByTestId("video-gesture-surface");
+
+    // Touch tap 1
+    fireEvent.touchStart(surface, { touches: [{ clientX: 600, clientY: 100 }] });
+    fireEvent.touchEnd(surface, { changedTouches: [{ clientX: 600, clientY: 100 }] });
+
+    // Touch tap 2
+    fireEvent.touchStart(surface, { touches: [{ clientX: 600, clientY: 100 }] });
+    fireEvent.touchEnd(surface, { changedTouches: [{ clientX: 600, clientY: 100 }] });
+
+    expect(screen.getByTestId("double-tap-right-feedback")).toBeTruthy();
+    expect(screen.getByText("+10s")).toBeTruthy();
+
+    // Touch tap 3 (burst continues: +10s more -> +20s)
+    fireEvent.touchStart(surface, { touches: [{ clientX: 600, clientY: 100 }] });
+    fireEvent.touchEnd(surface, { changedTouches: [{ clientX: 600, clientY: 100 }] });
+
+    expect(screen.getByText("+20s")).toBeTruthy();
+    expect(screen.getByText("Tua 20 giây")).toBeTruthy();
+  });
 });
 
 describe("IMDb metadata", () => {
