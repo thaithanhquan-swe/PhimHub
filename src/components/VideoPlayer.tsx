@@ -149,6 +149,25 @@ export function VideoPlayer({
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
 
+  // Double-tap seek state & gesture refs
+  const [doubleTapFeedback, setDoubleTapFeedback] = useState<{
+    side: "left" | "right";
+    seconds: number;
+  } | null>(null);
+  const singleTapTimerRef = useRef<number | null>(null);
+  const doubleTapActiveRef = useRef<{
+    side: "left" | "right";
+    count: number;
+    lastTime: number;
+  } | null>(null);
+  const doubleTapResetTimerRef = useRef<number | null>(null);
+  const pendingTapRef = useRef<{
+    side: "left" | "right" | "center";
+    time: number;
+  } | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastTouchTimestampRef = useRef<number>(0);
+
   // Web Audio Context & GainNode for Audio Amplification (up to 200%)
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -712,6 +731,8 @@ export function VideoPlayer({
       if (seekOverlayTimerRef.current) window.clearTimeout(seekOverlayTimerRef.current);
       if (unlockButtonTimerRef.current) window.clearTimeout(unlockButtonTimerRef.current);
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (singleTapTimerRef.current) window.clearTimeout(singleTapTimerRef.current);
+      if (doubleTapResetTimerRef.current) window.clearTimeout(doubleTapResetTimerRef.current);
     };
   }, []);
 
@@ -891,12 +912,17 @@ export function VideoPlayer({
     resetHideControlsTimer();
   }
 
-  function seekBy(deltaSeconds: number) {
+  function seekBy(deltaSeconds: number, skipCenterFeedback = false) {
     const video = videoRef.current;
     if (!video) return;
-    const target = Math.max(0, Math.min(video.duration || 0, video.currentTime + deltaSeconds));
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const maxTime = duration > 0 ? duration : Math.max(video.currentTime + deltaSeconds, 0);
+    const target = Math.max(0, Math.min(maxTime, video.currentTime + deltaSeconds));
     video.currentTime = target;
-    triggerSeekFeedback(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
+    setCurrentTime(target);
+    if (!skipCenterFeedback) {
+      triggerSeekFeedback(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
+    }
     resetHideControlsTimer();
   }
 
@@ -1022,7 +1048,7 @@ export function VideoPlayer({
     resetHideControlsTimer();
   };
 
-  const handleVideoClick = () => {
+  const handleSingleTap = useCallback(() => {
     if (isScreenLocked) {
       setShowUnlockButton(true);
       resetUnlockButtonTimer();
@@ -1034,6 +1060,152 @@ export function VideoPlayer({
       return;
     }
     togglePlay();
+  }, [isPlaying, isScreenLocked, resetHideControlsTimer, resetUnlockButtonTimer, showControls]);
+
+  const handleTap = useCallback(
+    (clientX: number) => {
+      if (isScreenLocked) {
+        setShowUnlockButton(true);
+        resetUnlockButtonTimer();
+        return;
+      }
+
+      const container = containerRef.current;
+      let side: "left" | "right" = "right";
+
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const width = rect.width > 0 ? rect.width : typeof window !== "undefined" ? window.innerWidth : 800;
+        const left = rect.width > 0 ? rect.left : 0;
+        const relativeX = clientX - left;
+        side = relativeX < width / 2 ? "left" : "right";
+      }
+
+      const now = Date.now();
+
+      // 1. Continuation tap in active double-tap burst (e.g. +20s, +30s...)
+      if (
+        doubleTapActiveRef.current &&
+        doubleTapActiveRef.current.side === side &&
+        now - doubleTapActiveRef.current.lastTime < 650
+      ) {
+        if (doubleTapResetTimerRef.current) {
+          window.clearTimeout(doubleTapResetTimerRef.current);
+        }
+        const newCount = doubleTapActiveRef.current.count + 1;
+        doubleTapActiveRef.current = {
+          side,
+          count: newCount,
+          lastTime: now,
+        };
+
+        seekBy(side === "right" ? 10 : -10, true);
+        setDoubleTapFeedback({
+          side,
+          seconds: newCount * 10,
+        });
+
+        doubleTapResetTimerRef.current = window.setTimeout(() => {
+          doubleTapActiveRef.current = null;
+          setDoubleTapFeedback(null);
+        }, 650);
+        return;
+      }
+
+      // 2. Second tap of a new double tap
+      if (
+        pendingTapRef.current &&
+        pendingTapRef.current.side === side &&
+        now - pendingTapRef.current.time < 320
+      ) {
+        if (singleTapTimerRef.current) {
+          window.clearTimeout(singleTapTimerRef.current);
+          singleTapTimerRef.current = null;
+        }
+        pendingTapRef.current = null;
+
+        if (doubleTapResetTimerRef.current) {
+          window.clearTimeout(doubleTapResetTimerRef.current);
+        }
+        doubleTapActiveRef.current = {
+          side,
+          count: 1,
+          lastTime: now,
+        };
+
+        seekBy(side === "right" ? 10 : -10, true);
+        setDoubleTapFeedback({
+          side,
+          seconds: 10,
+        });
+
+        doubleTapResetTimerRef.current = window.setTimeout(() => {
+          doubleTapActiveRef.current = null;
+          setDoubleTapFeedback(null);
+        }, 650);
+        return;
+      }
+
+      // 3. First tap
+      pendingTapRef.current = {
+        side,
+        time: now,
+      };
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+      }
+      singleTapTimerRef.current = window.setTimeout(() => {
+        pendingTapRef.current = null;
+        singleTapTimerRef.current = null;
+        handleSingleTap();
+      }, 280);
+    },
+    [handleSingleTap, isScreenLocked, resetUnlockButtonTimer],
+  );
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isScreenLocked) {
+      setShowUnlockButton(true);
+      resetUnlockButtonTimer();
+      return;
+    }
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchStartPosRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
+    } else {
+      touchStartPosRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isScreenLocked) return;
+    if (!touchStartPosRef.current) return;
+
+    const start = touchStartPosRef.current;
+    touchStartPosRef.current = null;
+
+    if (e.changedTouches.length === 1) {
+      const touch = e.changedTouches[0];
+      const dx = Math.abs(touch.clientX - start.x);
+      const dy = Math.abs(touch.clientY - start.y);
+      const dt = Date.now() - start.time;
+
+      if (dx < 15 && dy < 15 && dt < 400) {
+        lastTouchTimestampRef.current = Date.now();
+        handleTap(touch.clientX);
+      }
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (Date.now() - lastTouchTimestampRef.current < 500) {
+      return;
+    }
+    handleTap(e.clientX);
   };
 
   // If using embed iframe (fallback or when m3u8 is absent)
@@ -1122,16 +1294,21 @@ export function VideoPlayer({
         x5-playsinline="true"
         crossOrigin="anonymous"
         poster={poster}
-        onClick={handleVideoClick}
-        onDoubleClick={() => {
-          if (isScreenLocked) return;
-          handleToggleScreenOrientation();
-        }}
         className={cn(
-          "size-full bg-black transition-all",
+          "size-full bg-black transition-all pointer-events-none",
           aspectRatio === "cover" ? "object-cover" : "object-contain",
         )}
         preload="auto"
+      />
+
+      {/* Gesture Tap / Double Tap Surface */}
+      <div
+        data-testid="video-gesture-surface"
+        className="absolute inset-0 z-10 cursor-pointer"
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        aria-label="Khu vực cử chỉ phát video"
       />
 
       {/* Floating Unlock Button when Screen is Locked */}
@@ -1173,21 +1350,29 @@ export function VideoPlayer({
 
       {/* Big Center Play Button when paused and not actively loading */}
       {!isPlaying && !isLoading && !error && !isScreenLocked && (
-        <button
-          type="button"
-          onClick={togglePlay}
-          className="absolute inset-0 grid place-items-center bg-black/35 hover:bg-black/50 transition-colors group/play"
-          aria-label="Phát video"
-        >
-          <div className="grid size-16 sm:size-20 place-items-center rounded-full bg-primary/95 text-white shadow-2xl transition-transform duration-200 group-hover/play:scale-110 active:scale-95">
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/35 transition-colors">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            className="pointer-events-auto grid size-16 sm:size-20 place-items-center rounded-full bg-primary/95 text-white shadow-2xl transition-transform duration-200 hover:scale-110 active:scale-95"
+            aria-label="Phát video"
+          >
             <Play className="size-8 sm:size-10 fill-current ml-1 text-white" />
-          </div>
-        </button>
+          </button>
+        </div>
       )}
 
       {/* Buffering Spinner (Only when actively loading/buffering) */}
       {isLoading && !error && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-xs">
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/50 backdrop-blur-xs">
           <div className="flex flex-col items-center gap-2.5">
             <Loader2 className="size-11 animate-spin text-primary" />
             <span className="text-xs text-white/85 font-medium drop-shadow">Đang tải luồng phim...</span>
@@ -1210,9 +1395,49 @@ export function VideoPlayer({
         </button>
       )}
 
+      {/* Double Tap Seek Feedback Overlay (+10s right / -10s left) */}
+      {doubleTapFeedback && (
+        <div
+          data-testid={`double-tap-${doubleTapFeedback.side}-feedback`}
+          className={cn(
+            "pointer-events-none absolute inset-y-0 z-30 flex w-1/2 items-center justify-center select-none overflow-hidden",
+            doubleTapFeedback.side === "left" ? "left-0" : "right-0",
+          )}
+        >
+          {/* Semi-circular curved ripple glow backdrop */}
+          <div
+            className={cn(
+              "absolute inset-y-0 w-full transition-all duration-300",
+              doubleTapFeedback.side === "left"
+                ? "left-0 bg-gradient-to-r from-white/20 via-white/10 to-transparent rounded-r-full"
+                : "right-0 bg-gradient-to-l from-white/20 via-white/10 to-transparent rounded-l-full",
+            )}
+          />
+
+          {/* Center animated badge */}
+          <div className="relative z-10 flex flex-col items-center gap-1.5 text-white animate-double-tap">
+            <div className="grid size-14 sm:size-16 place-items-center rounded-full bg-black/75 backdrop-blur-md border border-white/25 shadow-2xl text-white">
+              {doubleTapFeedback.side === "left" ? (
+                <RotateCcw className="size-7 sm:size-8 stroke-[2.5] text-white -rotate-12 transition-transform duration-200" />
+              ) : (
+                <RotateCw className="size-7 sm:size-8 stroke-[2.5] text-white rotate-12 transition-transform duration-200" />
+              )}
+            </div>
+            <span className="text-base sm:text-lg font-black tracking-wider text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+              {doubleTapFeedback.side === "left" ? `-${doubleTapFeedback.seconds}s` : `+${doubleTapFeedback.seconds}s`}
+            </span>
+            <span className="text-[10px] sm:text-[11px] font-bold text-white/80 uppercase tracking-widest drop-shadow">
+              {doubleTapFeedback.side === "left"
+                ? `Lùi ${doubleTapFeedback.seconds} giây`
+                : `Tua ${doubleTapFeedback.seconds} giây`}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Seek Feedback Animation (+10s, -10s) */}
       {seekFeedback && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center z-30">
           <div className="flex items-center gap-1 rounded-full bg-black/80 px-5 py-2.5 text-lg font-bold text-white shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
             {seekFeedback.startsWith("+") ? <RotateCw className="size-5" /> : <RotateCcw className="size-5" />}
             <span>{seekFeedback}</span>
@@ -1245,6 +1470,8 @@ export function VideoPlayer({
           "absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 sm:px-5 pb-3 sm:pb-4 pt-12 transition-opacity duration-300",
           (!isScreenLocked && (showControls || !isPlaying)) ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
         )}
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Interactive Scrub Timeline Bar */}
         <div
