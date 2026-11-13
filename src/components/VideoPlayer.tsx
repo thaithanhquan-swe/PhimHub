@@ -168,6 +168,26 @@ export function VideoPlayer({
   const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimestampRef = useRef<number>(0);
 
+  // Floating AssistiveTouch Lock Button position & drag state
+  const lockButtonRef = useRef<HTMLDivElement>(null);
+  const [lockButtonPos, setLockButtonPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingLock, setIsDraggingLock] = useState(false);
+  const isDraggingLockRef = useRef(false);
+  const dragStartRef = useRef<{
+    startX: number;
+    startY: number;
+    initialPosX: number;
+    initialPosY: number;
+    hasMoved: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    initialPosX: 0,
+    initialPosY: 0,
+    hasMoved: false,
+  });
+  const lastUnlockTimeRef = useRef(0);
+
   // Web Audio Context & GainNode for Audio Amplification (up to 200%)
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -284,15 +304,164 @@ export function VideoPlayer({
     setShowUnlockButton(true);
     resetUnlockButtonTimer();
     triggerToast("Đã khóa màn hình");
-  }, [resetUnlockButtonTimer, triggerToast]);
+
+    if (!lockButtonPos) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const safePad = 14;
+        const buttonSize = 54;
+        const initialY = Math.max(safePad, (rect.height - buttonSize) / 2);
+        setLockButtonPos({ x: safePad, y: initialY });
+      }
+    }
+  }, [lockButtonPos, resetUnlockButtonTimer, triggerToast]);
 
   const handleUnlockScreen = useCallback(() => {
+    if (Date.now() - lastUnlockTimeRef.current < 400) return;
+    lastUnlockTimeRef.current = Date.now();
     setIsScreenLocked(false);
     setShowUnlockButton(false);
     setShowControls(true);
     resetHideControlsTimer();
     triggerToast("Đã mở khóa màn hình");
   }, [resetHideControlsTimer, triggerToast]);
+
+  // Keep floating AssistiveTouch lock button clamped inside container upon window resize or device rotation
+  useEffect(() => {
+    const handleResize = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const buttonSize = 54;
+      const safePad = 14;
+      setLockButtonPos((prev) => {
+        if (!prev) return null;
+        const maxX = Math.max(safePad, rect.width - buttonSize - safePad);
+        const maxY = Math.max(safePad, rect.height - buttonSize - safePad);
+        const targetX = prev.x > rect.width / 2 ? maxX : safePad;
+        const targetY = Math.max(safePad, Math.min(maxY, prev.y));
+        return { x: targetX, y: targetY };
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, []);
+
+  const handleLockPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if not supported in environment
+    }
+
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = e.currentTarget.getBoundingClientRect();
+
+    const currentX = lockButtonPos ? lockButtonPos.x : buttonRect.left - containerRect.left;
+    const currentY = lockButtonPos ? lockButtonPos.y : buttonRect.top - containerRect.top;
+
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPosX: currentX,
+      initialPosY: currentY,
+      hasMoved: false,
+    };
+    isDraggingLockRef.current = true;
+    setIsDraggingLock(true);
+    setShowUnlockButton(true);
+    resetUnlockButtonTimer();
+  };
+
+  const handleLockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingLockRef.current) return;
+    e.stopPropagation();
+
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+
+    const dx = e.clientX - dragStartRef.current.startX;
+    const dy = e.clientY - dragStartRef.current.startY;
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      dragStartRef.current.hasMoved = true;
+    }
+
+    const buttonSize = 54;
+    const safePad = 12;
+
+    const minX = safePad;
+    const maxX = Math.max(safePad, containerRect.width - buttonSize - safePad);
+    const minY = safePad;
+    const maxY = Math.max(safePad, containerRect.height - buttonSize - safePad);
+
+    const rawX = dragStartRef.current.initialPosX + dx;
+    const rawY = dragStartRef.current.initialPosY + dy;
+
+    const clampedX = Math.max(minX, Math.min(maxX, rawX));
+    const clampedY = Math.max(minY, Math.min(maxY, rawY));
+
+    setLockButtonPos({ x: clampedX, y: clampedY });
+    resetUnlockButtonTimer();
+  };
+
+  const handleLockPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingLockRef.current) return;
+    e.stopPropagation();
+    isDraggingLockRef.current = false;
+    setIsDraggingLock(false);
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+
+    const hasMoved = dragStartRef.current.hasMoved;
+
+    if (!hasMoved) {
+      handleUnlockScreen();
+      return;
+    }
+
+    setTimeout(() => {
+      dragStartRef.current.hasMoved = false;
+    }, 50);
+
+    // Snap smoothly to nearest left or right edge (AssistiveTouch style!)
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+
+    const buttonSize = 54;
+    const safePad = 14;
+
+    setLockButtonPos((prev) => {
+      if (!prev) return null;
+      const centerX = prev.x + buttonSize / 2;
+      const snapLeft = safePad;
+      const snapRight = Math.max(safePad, containerRect.width - buttonSize - safePad);
+
+      const targetX = centerX < containerRect.width / 2 ? snapLeft : snapRight;
+      const minY = safePad;
+      const maxY = Math.max(safePad, containerRect.height - buttonSize - safePad);
+      const targetY = Math.max(minY, Math.min(maxY, prev.y));
+
+      return { x: targetX, y: targetY };
+    });
+
+    resetUnlockButtonTimer();
+  };
 
   const handleToggleScreenOrientation = useCallback(async () => {
     const container = containerRef.current;
@@ -1311,26 +1480,66 @@ export function VideoPlayer({
         aria-label="Khu vực cử chỉ phát video"
       />
 
-      {/* Floating Unlock Button when Screen is Locked */}
+      {/* Floating AssistiveTouch Unlock Button when Screen is Locked */}
       {isScreenLocked && (
         <div
+          ref={lockButtonRef}
+          data-testid="assistive-lock-button"
+          style={{
+            transform: lockButtonPos
+              ? `translate3d(${lockButtonPos.x}px, ${lockButtonPos.y}px, 0)`
+              : undefined,
+            touchAction: "none",
+          }}
+          onPointerDown={handleLockPointerDown}
+          onPointerMove={handleLockPointerMove}
+          onPointerUp={handleLockPointerUp}
+          onPointerCancel={handleLockPointerUp}
           className={cn(
-            "absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 z-50 transition-all duration-300",
-            showUnlockButton
+            "absolute top-0 left-0 z-50 select-none cursor-grab active:cursor-grabbing",
+            !lockButtonPos && "left-3.5 sm:left-4 top-1/2 -translate-y-1/2",
+            isDraggingLock ? "transition-none" : "transition-all duration-300 ease-out",
+            showUnlockButton || isDraggingLock
               ? "opacity-100 scale-100 pointer-events-auto"
-              : "opacity-35 hover:opacity-100 focus:opacity-100 scale-95 pointer-events-auto",
+              : "opacity-45 hover:opacity-100 scale-95 pointer-events-auto",
           )}
         >
           <button
             type="button"
-            onClick={handleUnlockScreen}
-            className="flex items-center gap-2 rounded-full border border-primary/40 bg-black/90 px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-white shadow-2xl backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
-            title="Nhấn để mở khóa màn hình"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!dragStartRef.current.hasMoved) {
+                handleUnlockScreen();
+              }
+            }}
+            className="group/assistive relative flex items-center justify-center size-13 sm:size-14 rounded-full bg-[#18181b]/80 backdrop-blur-xl border border-white/25 shadow-2xl transition-transform duration-150 active:scale-95 hover:scale-105"
+            title="Nhấn để mở khóa • Kéo để di chuyển"
             aria-label="Mở khóa màn hình"
           >
-            <Lock className="size-4 text-primary animate-pulse" />
-            <span>Mở khóa</span>
+            {/* Outer concentric frosted glass ring */}
+            <div className="size-10 sm:size-11 rounded-full border border-white/30 bg-white/10 flex items-center justify-center shadow-inner group-hover/assistive:border-white/50 transition-colors">
+              {/* Inner core circle */}
+              <div className="size-7 sm:size-8 rounded-full bg-white/20 border border-white/50 flex items-center justify-center shadow-md group-hover/assistive:bg-primary/80 group-hover/assistive:border-primary transition-colors">
+                <Lock className="size-3.5 sm:size-4 text-white stroke-[2.5] drop-shadow" />
+              </div>
+            </div>
+
+            {/* Subtle Pulse Halo when active */}
+            {showUnlockButton && (
+              <span className="absolute -inset-1 rounded-full border border-primary/50 animate-ping opacity-30 pointer-events-none" />
+            )}
           </button>
+
+          {/* Mini "Mở khóa" badge hint */}
+          <span
+            className={cn(
+              "pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/85 border border-white/20 px-2 py-0.5 text-[9px] font-bold text-white shadow-lg backdrop-blur-sm transition-opacity duration-200",
+              showUnlockButton || isDraggingLock ? "opacity-100" : "opacity-0",
+              lockButtonPos && lockButtonPos.y > 100 ? "-top-6" : "-bottom-6",
+            )}
+          >
+            Mở khóa
+          </span>
         </div>
       )}
 

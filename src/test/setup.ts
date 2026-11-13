@@ -15,6 +15,11 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+if (typeof window !== "undefined" && !window.PointerEvent) {
+  // @ts-expect-error polyfill for jsdom
+  window.PointerEvent = window.MouseEvent;
+}
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
