@@ -256,6 +256,7 @@ export function MovieDetailPage() {
     setCurrentEpisodeIndex(episodeIndex);
     setResumePrompt(null);
     setResumeAtTime(0);
+    setPreferEmbed(false);
   }
 
   function scrollToPlayer() {
@@ -402,7 +403,7 @@ export function MovieDetailPage() {
                       onClick={() => setPreferEmbed((prev) => !prev)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/90 hover:text-white hover:bg-white/20 active:scale-95 transition-all"
                     >
-                      <span>{preferEmbed ? "▶ Đổi sang: Trực tiếp (HLS)" : "⚡ Đổi sang: Player dự phòng (Embed)"}</span>
+                      <span>{preferEmbed ? "▶ Đổi sang: Trực tiếp (HLS - Không QC)" : "⚡ Đổi sang: Player dự phòng (Embed)"}</span>
                     </button>
                   )}
                   {currentEpisode?.m3u8 && !preferEmbed && (

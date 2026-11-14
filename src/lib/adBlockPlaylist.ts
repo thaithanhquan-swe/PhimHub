@@ -7,11 +7,11 @@ import Hls, {
 /**
  * Checks if a given media segment URL is an injected advertisement.
  * Covers all known ad-injection patterns from movie providers & CDNs:
- * - convertvX / convert directories (e.g. convertv7, convertv9, convert)
+ * - convertvX / convert / converted directories (e.g. convertv7, convertv9, convert, converted, convert-ads)
  * - Dynamic /vX/<hash>/segment_XXXX.ts chunks (e.g. /v9/<hash>/segment_0001.ts, /v7/...)
- * - Explicit segment_XXXX.ts files
- * - Ad / banner / promo / sponsor / betting filenames
- * - Known external ad networks, tracking platforms, and gambling domains
+ * - Explicit segment_XXXX.ts or segmentXXXX.ts files
+ * - Ad / banner / promo / sponsor / betting filenames or Vietnamese abbreviations (qc, quangcao, khuyenmai)
+ * - Known external ad networks, tracking platforms, and gambling brands (checked in domain, path, or filename)
  */
 export function isAdSegmentUrl(url: string): boolean {
   const trimmed = url.trim();
@@ -19,40 +19,38 @@ export function isAdSegmentUrl(url: string): boolean {
     return false;
   }
 
-  // 1. Common CDN ad-injection folders (convertv7, convertv9, convert, converted, etc.)
-  if (/(?:^|\/)convert(?:v\d*|[_-]|\/)/i.test(trimmed)) {
+  // 1. Common CDN ad-injection folders (convertv7, convertv9, convert, converted, convert1, convert-ads, etc.)
+  if (/(?:^|\/)convert(?:v?\d*|ed|[_-]|\/|$)/i.test(trimmed)) {
     return true;
   }
 
   // 2. MD5 / hashed video ad paths (/v9/<hash>/segment_xxxx.ts, /v7/..., /v8/..., etc.)
-  if (/(?:^|\/)v\d+\/[a-f0-9]{8,}\//i.test(trimmed)) {
+  if (/(?:^|\/)v\d+\/[a-z0-9_-]{6,}\//i.test(trimmed)) {
     return true;
   }
-  if (/(?:^|\/)v\d+\/.*segment_\d+\.ts/i.test(trimmed)) {
+  if (/(?:^|\/)v\d+\/.*segment_\d+/i.test(trimmed)) {
     return true;
   }
 
-  // 3. Ad-specific filenames and segment naming patterns
+  // 3. Ad-specific filenames, chunks, and segment naming patterns (including Vietnamese ad naming)
   if (
-    /(?:^|\/)(?:segment_\d+|ads?|adv|advert|banner|quang[-_]?cao|popunder|midroll|preroll|postroll|sponsor|promo|interstitial)[-_.]/i.test(
+    /(?:^|\/)(?:segment_?\d+|ads?|adv|advert|banner|quang[-_]?cao|qc|popunder|midroll|preroll|postroll|sponsor|promo|interstitial|khuyen[-_]?mai)[-_.\d]/i.test(
       trimmed,
     )
   ) {
     return true;
   }
-  if (/^segment_\d+\.ts$/i.test(trimmed)) {
+  if (/^segment_?\d+\.ts$/i.test(trimmed)) {
     return true;
   }
 
-  // 4. Absolute URLs from known ad networks, trackers, or gambling platforms
-  if (/^https?:\/\//i.test(trimmed)) {
-    if (
-      /(?:doubleclick|googleads|googlesyndication|adnxs|adsystem|adskeeper|adsterra|propellerads|trafficjunky|exoclick|1999\.ai|88bet|fb88|kubet|w88|fun88|bk8|shbet|new88|jun88|hi88|789bet|f8bet|okvip|sin88|may88|debet|red88|five88|zbet|oxbet|taixiu|nohu|banca|gamebai|casino|betting|adserver)/i.test(
-        trimmed,
-      )
-    ) {
-      return true;
-    }
+  // 4. Known ad networks, gambling platforms, and betting brands (checked everywhere in URL/path/filename)
+  if (
+    /(?:1999\.?ai|okvip|88bet|fb88|kubet|w88|fun88|bk8|shbet|new88|jun88|hi88|789bet|f8bet|ok9|sin88|may88|debet|red88|five88|zbet|oxbet|taixiu|nohu|banca|gamebai|casino|betting|adserver|adskeeper|adsterra|propellerads|trafficjunky|exoclick|doubleclick|googleads|googlesyndication|adnxs|adsystem)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
   }
 
   return false;
@@ -183,4 +181,89 @@ export class PlaylistAdBlockLoader extends (Hls.DefaultConfig.loader as any) {
 
     super.load(context, config, callbacks);
   }
+}
+
+/**
+ * Converts all relative segment URIs and key URIs in an HLS playlist to absolute URLs,
+ * resolving them against the playlist's base URL.
+ */
+export function makeHlsUrlsAbsolute(playlistText: string, baseUrl: string): string {
+  if (!playlistText || typeof playlistText !== "string") return playlistText;
+  const lines = playlistText.split("\n");
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith("#")) {
+      // Rewrite relative URI="..." in #EXT-X-KEY or #EXT-X-MAP
+      if (trimmed.includes('URI="')) {
+        const rewritten = trimmed.replace(/URI="([^"]+)"/, (match, uri) => {
+          if (!/^https?:\/\//i.test(uri)) {
+            try {
+              return `URI="${new URL(uri, baseUrl).href}"`;
+            } catch {
+              return match;
+            }
+          }
+          return match;
+        });
+        result.push(rewritten);
+      } else {
+        result.push(line);
+      }
+    } else {
+      // Media segment line
+      if (!/^https?:\/\//i.test(trimmed)) {
+        try {
+          result.push(new URL(trimmed, baseUrl).href);
+        } catch {
+          result.push(line);
+        }
+      } else {
+        result.push(line);
+      }
+    }
+  }
+
+  return result.join("\n");
+}
+
+/**
+ * Downloads and cleans an HLS playlist for native video players (such as iOS Safari / Apple AVPlayer),
+ * returning an ad-free Blob URL where all relative segment URLs have been converted to absolute URLs.
+ */
+export async function createCleanNativeM3u8Url(m3u8Url: string, signal?: AbortSignal): Promise<string> {
+  const res = await fetch(m3u8Url, { signal });
+  const text = await res.text();
+
+  // If this is a multivariant master playlist, find the best level subplaylist
+  if (text.includes("#EXT-X-STREAM-INF") && !text.includes("#EXTINF:")) {
+    const lines = text.split("\n");
+    let subUrl = "";
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("#EXT-X-STREAM-INF")) {
+        const nextLine = lines[i + 1]?.trim();
+        if (nextLine && !nextLine.startsWith("#")) {
+          subUrl = new URL(nextLine, m3u8Url).href;
+          break;
+        }
+      }
+    }
+    if (subUrl) {
+      const subRes = await fetch(subUrl, { signal });
+      const subText = await subRes.text();
+      const cleaned = cleanHlsPlaylist(subText);
+      const absoluteCleaned = makeHlsUrlsAbsolute(cleaned, subUrl);
+      const blob = new Blob([absoluteCleaned], { type: "application/vnd.apple.mpegurl" });
+      return URL.createObjectURL(blob);
+    }
+  }
+
+  // Already a media playlist
+  const cleaned = cleanHlsPlaylist(text);
+  const absoluteCleaned = makeHlsUrlsAbsolute(cleaned, m3u8Url);
+  const blob = new Blob([absoluteCleaned], { type: "application/vnd.apple.mpegurl" });
+  return URL.createObjectURL(blob);
 }

@@ -41,9 +41,9 @@ export function EmbedPlayerFallback({
         <button
           type="button"
           onClick={onSwitchToHls}
-          className="absolute top-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/85 border border-white/20 px-3 py-1.5 text-xs font-semibold text-white shadow-xl backdrop-blur-md hover:bg-primary transition-all active:scale-95"
+          className="absolute top-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/85 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-400 shadow-xl backdrop-blur-md hover:bg-emerald-600 hover:text-white transition-all active:scale-95"
         >
-          <span>Phát nguồn trực tiếp (HLS)</span>
+          <span>🛡️ Phát nguồn trực tiếp (HLS - Không QC)</span>
         </button>
       )}
       <button
@@ -55,8 +55,8 @@ export function EmbedPlayerFallback({
       >
         {isLandscape ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
       </button>
-      <div className="absolute bottom-2 left-2 z-30 rounded-md bg-black/75 px-2.5 py-1.5 text-[10px] text-white/85 shadow backdrop-blur-sm">
-        Embed: chất lượng/tốc độ do nguồn quản lý. Lỗi phát? Thử máy chủ khác bên trên.
+      <div className="absolute bottom-2 left-2 z-30 rounded-md bg-black/80 px-2.5 py-1.5 text-[10px] text-amber-200/90 shadow backdrop-blur-sm border border-amber-500/20">
+        Embed: chất lượng/tốc độ do nguồn quản lý (có thể có QC từ nguồn). Bấm "Phát nguồn trực tiếp" góc trên để chặn quảng cáo.
       </div>
       <iframe
         key={embedUrl}
