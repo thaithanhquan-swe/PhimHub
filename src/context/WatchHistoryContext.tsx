@@ -64,8 +64,13 @@ export function WatchHistoryProvider({ children }: { children: ReactNode }) {
         ...item,
         updatedAt: Date.now(),
       };
-      // Keep up to 20 recent items
-      return [newItem, ...filtered].slice(0, 20);
+      const updated = [newItem, ...filtered].slice(0, 20);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (err) {
+        console.warn("Failed to save watch history:", err);
+      }
+      return updated;
     });
   }
 
@@ -74,11 +79,24 @@ export function WatchHistoryProvider({ children }: { children: ReactNode }) {
   }
 
   function removeFromHistory(slug: string) {
-    setHistory((prev) => prev.filter((h) => h.slug !== slug && h.movieId !== slug));
+    setHistory((prev) => {
+      const updated = prev.filter((h) => h.slug !== slug && h.movieId !== slug);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore
+      }
+      return updated;
+    });
   }
 
   function clearHistory() {
     setHistory([]);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
   }
 
   const value = useMemo(

@@ -38,7 +38,7 @@ const VideoPlayer = lazy(() =>
 
 export function MovieDetailPage() {
   const { id = "" } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const autoPlay = searchParams.get("play") === "true";
   const [currentServerIndex, setCurrentServerIndex] = useState(0);
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
@@ -257,6 +257,17 @@ export function MovieDetailPage() {
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
+
+    // Keep URL search params in sync with the current episode so F5 refresh preserves this episode
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("server", String(serverIndex));
+        next.set("ep", String(episodeIndex));
+        return next;
+      },
+      { replace: true },
+    );
   }
 
   function scrollToPlayer() {
@@ -331,7 +342,7 @@ export function MovieDetailPage() {
               <div className="relative">
                 <Suspense fallback={<div className="aspect-video w-full animate-pulse rounded-md bg-white/10" />}>
                   <VideoPlayer
-                    key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${resumeAtTime}`}
+                    key={`${movie.slug}-${currentServerIndex}-${preferEmbed}`}
                     m3u8Url={currentEpisode.m3u8}
                     embedUrl={currentEpisode.embed}
                     title={movie.title}
