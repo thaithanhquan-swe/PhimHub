@@ -142,6 +142,69 @@ describe("watch history", () => {
     fireEvent.click(screen.getByText("clear history"));
     expect(screen.getByText("0").textContent).toBe("0");
   });
+
+  it("synchronously updates the active episode in localStorage when transitioning from episode 4 to episode 7", () => {
+    function MultiEpisodeHarness() {
+      const { saveProgress, getProgress } = useWatchHistory();
+      return (
+        <div>
+          <button
+            onClick={() =>
+              saveProgress({
+                movieId: "movie-1",
+                slug: "movie-1",
+                title: "Movie 1",
+                serverName: "Vietsub",
+                serverIndex: 0,
+                episodeName: "Tập 04",
+                episodeSlug: "tap-04",
+                episodeIndex: 3,
+                currentTime: 500,
+                duration: 1200,
+              })
+            }
+          >
+            watch episode 4
+          </button>
+          <button
+            onClick={() =>
+              saveProgress({
+                movieId: "movie-1",
+                slug: "movie-1",
+                title: "Movie 1",
+                serverName: "Vietsub",
+                serverIndex: 0,
+                episodeName: "Tập 07",
+                episodeSlug: "tap-07",
+                episodeIndex: 6,
+                currentTime: 100,
+                duration: 1200,
+              })
+            }
+          >
+            watch episode 7
+          </button>
+          <span data-testid="latest-ep">{getProgress("movie-1")?.episodeIndex}</span>
+        </div>
+      );
+    }
+
+    render(
+      <WatchHistoryProvider>
+        <MultiEpisodeHarness />
+      </WatchHistoryProvider>,
+    );
+
+    fireEvent.click(screen.getByText("watch episode 4"));
+    let stored = JSON.parse(localStorage.getItem("phimhub_continue_watching_v1") ?? "[]");
+    expect(stored[0].episodeIndex).toBe(3);
+
+    fireEvent.click(screen.getByText("watch episode 7"));
+    stored = JSON.parse(localStorage.getItem("phimhub_continue_watching_v1") ?? "[]");
+    // Must immediately be Episode 7 (index 6), not reset to episode 4
+    expect(stored[0].episodeIndex).toBe(6);
+    expect(screen.getByTestId("latest-ep").textContent).toBe("6");
+  });
 });
 
 describe("player settings", () => {
@@ -263,6 +326,24 @@ describe("player settings", () => {
     fireEvent.pointerUp(lockButton, { clientX: 180, clientY: 220, pointerId: 1 });
     expect(screen.getByText("Đã mở khóa màn hình")).toBeTruthy();
     expect(screen.queryByTestId("assistive-lock-button")).toBeNull();
+  });
+
+  it("restores volume and mute state from localStorage across mounts", () => {
+    localStorage.setItem("phimhub_player_volume", "0.45");
+    localStorage.setItem("phimhub_player_muted", "true");
+
+    render(<VideoPlayer title="Test Movie" initialTime={10} />);
+
+    // Muted volume control displays 0
+    const volumeSlider = screen.getByLabelText("Âm lượng video") as HTMLInputElement;
+    expect(volumeSlider.value).toBe("0");
+
+    // Unmute button restores unmuted volume 0.45
+    const muteBtn = screen.getByLabelText("Bật/Tắt âm thanh");
+    fireEvent.click(muteBtn);
+
+    expect(volumeSlider.value).toBe("0.45");
+    expect(localStorage.getItem("phimhub_player_muted")).toBe("false");
   });
 });
 
