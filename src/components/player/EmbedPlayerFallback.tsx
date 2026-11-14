@@ -64,6 +64,7 @@ export function EmbedPlayerFallback({
         title={title}
         className="size-full border-0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
         allowFullScreen
         referrerPolicy="origin"
       />
