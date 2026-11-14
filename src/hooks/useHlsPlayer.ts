@@ -2,6 +2,7 @@ import Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { AUTO_QUALITY, type QualityOption } from "@/components/player";
+import { PlaylistAdBlockLoader } from "@/lib/adBlockPlaylist";
 
 interface UseHlsPlayerOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -122,6 +123,7 @@ export function useHlsPlayer({
         fragLoadingTimeOut: 12000,
         fragLoadingMaxRetry: 3,
         startLevel: -1,
+        pLoader: PlaylistAdBlockLoader as any,
       });
 
       hlsRef.current = hls;
