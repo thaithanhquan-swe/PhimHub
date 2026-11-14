@@ -224,6 +224,21 @@ describe("player settings", () => {
     expect(screen.getByText("Tua 20 giây")).toBeTruthy();
   });
 
+  it("toggles play/pause on single click on gesture surface without requiring a second click", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => {});
+    render(<VideoPlayer title="Test Movie" initialTime={10} />);
+    const surface = screen.getByTestId("video-gesture-surface");
+
+    // Single click
+    fireEvent.click(surface, { clientX: 200 });
+
+    // Single click executes togglePlay after single tap timeout
+    await vi.waitFor(() => {
+      expect(playSpy).toHaveBeenCalled();
+    });
+    playSpy.mockRestore();
+  });
+
   it("renders the draggable AssistiveTouch lock button when locked and unlocks on tap", () => {
     render(<VideoPlayer title="Test Movie" initialTime={10} />);
     

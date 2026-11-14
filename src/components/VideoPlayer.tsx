@@ -144,6 +144,7 @@ export function VideoPlayer({
   // HLS stream playback
   const {
     isPlaying,
+    setIsPlaying,
     currentTime,
     setCurrentTime,
     duration,
@@ -172,7 +173,7 @@ export function VideoPlayer({
     onSetMuted: setIsMuted,
   });
 
-  // Restore saved volume and sync audio boost on video mount / F5
+  // Restore saved volume and sync audio boost on video mount / F5 / episode change
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -187,25 +188,34 @@ export function VideoPlayer({
       initAudioGain();
       resumeAudioContext();
     }
-  }, [volume, audioBoostFactor, initAudioGain, resumeAudioContext]);
+  }, [volume, audioBoostFactor, m3u8Url, initAudioGain, resumeAudioContext]);
 
   // Playback control actions
   function togglePlay() {
     const now = Date.now();
-    if (now - lastTogglePlayTimeRef.current < 350) return;
+    if (now - lastTogglePlayTimeRef.current < 150) return;
     lastTogglePlayTimeRef.current = now;
 
     const video = videoRef.current;
     if (!video) return;
-    if (audioBoostFactor > 1) {
-      initAudioGain();
-    }
-    resumeAudioContext();
+
     if (video.paused) {
-      video.play().catch(() => {});
+      setIsPlaying(true);
+      if (audioBoostFactor > 1) {
+        initAudioGain();
+      }
+      resumeAudioContext();
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch(() => {
+          setIsPlaying(false);
+        });
+      }
     } else {
+      setIsPlaying(false);
       video.pause();
     }
+    setShowControls(true);
     resetHideControlsTimer();
   }
 
@@ -299,11 +309,8 @@ export function VideoPlayer({
     isScreenLocked,
     onSeekBy: seekBy,
     onSingleTap: () => {
-      if (!showControls) {
-        setShowControls(true);
-        resetHideControlsTimer();
-        return;
-      }
+      setShowControls(true);
+      resetHideControlsTimer();
       togglePlay();
     },
     onWakeLockIndicator: () => {

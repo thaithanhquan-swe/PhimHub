@@ -115,7 +115,7 @@ export function usePlayerGestures({
         return;
       }
 
-      // 3. First tap (wait 280ms before triggering single tap)
+      // 3. First tap on left/right side (wait 200ms before triggering single tap)
       pendingTapRef.current = {
         side,
         time: now,
@@ -127,7 +127,7 @@ export function usePlayerGestures({
         pendingTapRef.current = null;
         singleTapTimerRef.current = null;
         onSingleTap();
-      }, 280);
+      }, 200);
     },
     [containerRef, isScreenLocked, onSeekBy, onSingleTap, onWakeLockIndicator],
   );
