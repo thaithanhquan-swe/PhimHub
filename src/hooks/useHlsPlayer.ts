@@ -75,6 +75,15 @@ export function useHlsPlayer({
     [initialTime],
   );
 
+  // Resume seek if initialTime changes after metadata loaded
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || initialTime <= 0 || initialSeekAppliedRef.current) return;
+    if (video.readyState >= 1) {
+      seekToInitialTime(video);
+    }
+  }, [initialTime, seekToInitialTime, videoRef]);
+
   // Setup video source & HLS
   useEffect(() => {
     setError(null);
