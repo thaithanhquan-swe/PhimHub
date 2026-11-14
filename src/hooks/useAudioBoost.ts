@@ -1,5 +1,137 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// Module-level singleton Web Audio graph to preserve audio context and boost factor across episodes and player unmounts
+let globalAudioCtx: AudioContext | null = null;
+let globalGainNode: GainNode | null = null;
+let globalCompressor: DynamicsCompressorNode | null = null;
+const mediaSourceNodeMap = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+let activeSourceNode: MediaElementAudioSourceNode | null = null;
+let activeSourceElement: HTMLMediaElement | null = null;
+
+function getAudioContextClass(): typeof AudioContext | null {
+  if (typeof window === "undefined") return null;
+  return (
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext ||
+    null
+  );
+}
+
+function getOrCreateAudioGraph(targetLevel: number) {
+  const AudioCtx = getAudioContextClass();
+  if (!AudioCtx) return null;
+
+  try {
+    if (!globalAudioCtx || globalAudioCtx.state === "closed") {
+      if (
+        globalAudioCtx &&
+        globalAudioCtx.state !== "closed" &&
+        typeof globalAudioCtx.close === "function"
+      ) {
+        try {
+          globalAudioCtx.close().catch(() => {});
+        } catch {
+          // Ignore
+        }
+      }
+      try {
+        globalAudioCtx = new AudioCtx({ latencyHint: "interactive" });
+      } catch {
+        globalAudioCtx = new AudioCtx();
+      }
+      globalGainNode = globalAudioCtx.createGain();
+      globalCompressor = globalAudioCtx.createDynamicsCompressor();
+
+      // Prevent clipping & distortion when boosting up to 500%
+      globalCompressor.threshold.value = -8;
+      globalCompressor.knee.value = 25;
+      globalCompressor.ratio.value = 12;
+      globalCompressor.attack.value = 0.003;
+      globalCompressor.release.value = 0.25;
+
+      globalGainNode.connect(globalCompressor);
+      globalCompressor.connect(globalAudioCtx.destination);
+      activeSourceNode = null;
+      activeSourceElement = null;
+    }
+
+    if (globalGainNode) {
+      globalGainNode.gain.value = targetLevel;
+    }
+
+    if (globalAudioCtx.state === "suspended" && typeof globalAudioCtx.resume === "function") {
+      globalAudioCtx.resume().catch(() => {});
+    }
+
+    return {
+      ctx: globalAudioCtx,
+      gain: globalGainNode,
+      compressor: globalCompressor,
+    };
+  } catch (err) {
+    console.warn("AudioContext boost initialization:", err);
+    return null;
+  }
+}
+
+function attachVideoToGraph(video: HTMLVideoElement, targetLevel: number): GainNode | null {
+  const graph = getOrCreateAudioGraph(targetLevel);
+  if (!graph || !graph.ctx || !graph.gain) return null;
+
+  try {
+    let source = mediaSourceNodeMap.get(video);
+    if (!source) {
+      source = graph.ctx.createMediaElementSource(video);
+      mediaSourceNodeMap.set(video, source);
+    }
+
+    // Connect this source node to shared gain if not already connected
+    if (activeSourceNode !== source || activeSourceElement !== video) {
+      if (activeSourceNode) {
+        try {
+          activeSourceNode.disconnect();
+        } catch {
+          // Ignore
+        }
+      }
+      source.connect(graph.gain);
+      activeSourceNode = source;
+      activeSourceElement = video;
+    }
+
+    graph.gain.gain.value = targetLevel;
+
+    if (graph.ctx.state === "suspended" && typeof graph.ctx.resume === "function") {
+      graph.ctx.resume().catch(() => {});
+    }
+
+    return graph.gain;
+  } catch (err) {
+    console.warn("AudioContext boost initialization:", err);
+    return null;
+  }
+}
+
+// Reset singleton state for unit testing
+export function _resetAudioGraphForTesting() {
+  if (
+    globalAudioCtx &&
+    globalAudioCtx.state !== "closed" &&
+    typeof globalAudioCtx.close === "function"
+  ) {
+    try {
+      globalAudioCtx.close().catch(() => {});
+    } catch {
+      // Ignore
+    }
+  }
+  globalAudioCtx = null;
+  globalGainNode = null;
+  globalCompressor = null;
+  activeSourceNode = null;
+  activeSourceElement = null;
+}
+
 export function useAudioBoost(videoRef: React.RefObject<HTMLVideoElement | null>) {
   const [audioBoostFactor, setAudioBoostFactor] = useState(() => {
     try {
@@ -19,67 +151,26 @@ export function useAudioBoost(videoRef: React.RefObject<HTMLVideoElement | null>
   const audioBoostFactorRef = useRef(audioBoostFactor);
   audioBoostFactorRef.current = audioBoostFactor;
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-
   const initAudioGain = useCallback(
     (targetLevel?: number) => {
       const video = videoRef.current;
       if (!video) return null;
 
       const level = typeof targetLevel === "number" ? targetLevel : audioBoostFactorRef.current;
-
-      // Reuse existing graph if already established on this video element
-      if (gainNodeRef.current && audioCtxRef.current) {
-        if (audioCtxRef.current.state === "suspended") {
-          audioCtxRef.current.resume().catch(() => {});
-        }
-        gainNodeRef.current.gain.value = level;
-        return gainNodeRef.current;
-      }
-
-      try {
-        if (typeof window === "undefined") return null;
-        const AudioCtx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) return null;
-
-        const ctx = new AudioCtx();
-        const source = ctx.createMediaElementSource(video);
-        const gain = ctx.createGain();
-        const compressor = ctx.createDynamicsCompressor();
-
-        // Prevent clipping & distortion when boosting up to 500%
-        compressor.threshold.value = -8;
-        compressor.knee.value = 25;
-        compressor.ratio.value = 12;
-        compressor.attack.value = 0.003;
-        compressor.release.value = 0.25;
-
-        gain.gain.value = level;
-
-        source.connect(gain);
-        gain.connect(compressor);
-        compressor.connect(ctx.destination);
-
-        audioCtxRef.current = ctx;
-        gainNodeRef.current = gain;
-        sourceNodeRef.current = source;
-
-        if (ctx.state === "suspended") {
-          ctx.resume().catch(() => {});
-        }
-
-        return gain;
-      } catch (err) {
-        console.warn("AudioContext boost initialization:", err);
-        return null;
-      }
+      return attachVideoToGraph(video, level);
     },
     [videoRef],
   );
+
+  const resumeAudioContext = useCallback(() => {
+    if (
+      globalAudioCtx &&
+      globalAudioCtx.state === "suspended" &&
+      typeof globalAudioCtx.resume === "function"
+    ) {
+      globalAudioCtx.resume().catch(() => {});
+    }
+  }, []);
 
   const setBoostLevel = useCallback(
     (level: number, onToast?: (msg: string) => void) => {
@@ -103,45 +194,66 @@ export function useAudioBoost(videoRef: React.RefObject<HTMLVideoElement | null>
     [initAudioGain],
   );
 
-  const resumeAudioContext = useCallback(() => {
-    if (audioCtxRef.current?.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-  }, []);
-
-  // Automatically activate saved audio boost factor on initial load / refresh (F5)
-  // as soon as video plays or user performs any gesture
+  // Automatically activate and sync saved audio boost factor on initial load, refresh (F5),
+  // episode switch, and as soon as video plays or user performs any gesture
   useEffect(() => {
     if (audioBoostFactor <= 1) return;
 
-    let activated = false;
     const activate = () => {
-      if (activated && audioCtxRef.current?.state === "running") return;
       const gain = initAudioGain();
       if (gain) {
-        activated = true;
+        gain.gain.value = audioBoostFactorRef.current;
       }
-      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current
-          .resume()
-          .then(() => {
-            activated = true;
-          })
-          .catch(() => {});
+      resumeAudioContext();
+    };
+
+    const onPause = () => {
+      if (globalGainNode && globalAudioCtx && globalAudioCtx.state === "running") {
+        try {
+          if (typeof globalGainNode.gain.cancelScheduledValues === "function") {
+            globalGainNode.gain.cancelScheduledValues(globalAudioCtx.currentTime);
+          }
+          if (typeof globalGainNode.gain.setValueAtTime === "function") {
+            globalGainNode.gain.setValueAtTime(0, globalAudioCtx.currentTime);
+          } else {
+            globalGainNode.gain.value = 0;
+          }
+        } catch {
+          // Ignore
+        }
       }
+    };
+
+    const onPlay = () => {
+      if (globalGainNode && globalAudioCtx && globalAudioCtx.state === "running") {
+        try {
+          if (typeof globalGainNode.gain.cancelScheduledValues === "function") {
+            globalGainNode.gain.cancelScheduledValues(globalAudioCtx.currentTime);
+          }
+          if (typeof globalGainNode.gain.setValueAtTime === "function") {
+            globalGainNode.gain.setValueAtTime(audioBoostFactorRef.current, globalAudioCtx.currentTime);
+          } else {
+            globalGainNode.gain.value = audioBoostFactorRef.current;
+          }
+        } catch {
+          // Ignore
+        }
+      }
+      activate();
     };
 
     const video = videoRef.current;
     if (video) {
-      video.addEventListener("play", activate);
-      video.addEventListener("playing", activate);
-      if (!video.paused && !video.muted) {
-        activate();
-      }
+      video.addEventListener("pause", onPause);
+      video.addEventListener("play", onPlay);
+      video.addEventListener("playing", onPlay);
+      video.addEventListener("loadeddata", activate);
+      video.addEventListener("canplay", activate);
+      activate();
     }
 
     // Browsers require a user gesture to resume AudioContext.
-    // Listen to the first interaction event anywhere on the window.
+    // Listen to the interaction events anywhere on the window.
     const gestureEvents = ["pointerdown", "keydown", "touchstart", "click"] as const;
     const onGesture = () => {
       activate();
@@ -153,23 +265,33 @@ export function useAudioBoost(videoRef: React.RefObject<HTMLVideoElement | null>
 
     return () => {
       if (video) {
-        video.removeEventListener("play", activate);
-        video.removeEventListener("playing", activate);
+        video.removeEventListener("pause", onPause);
+        video.removeEventListener("play", onPlay);
+        video.removeEventListener("playing", onPlay);
+        video.removeEventListener("loadeddata", activate);
+        video.removeEventListener("canplay", activate);
       }
       gestureEvents.forEach((evt) => {
         window.removeEventListener(evt, onGesture, { capture: true } as EventListenerOptions);
       });
     };
-  }, [audioBoostFactor, initAudioGain, videoRef]);
+  }, [audioBoostFactor, initAudioGain, resumeAudioContext, videoRef]);
 
-  // Clean up Web Audio resources on unmount
+  // When unmounting, disconnect source node from graph if needed, but preserve global AudioContext
   useEffect(() => {
     return () => {
-      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-        audioCtxRef.current.close().catch(() => {});
+      const video = videoRef.current;
+      if (video && activeSourceElement === video && activeSourceNode) {
+        try {
+          activeSourceNode.disconnect();
+        } catch {
+          // Ignore
+        }
+        activeSourceNode = null;
+        activeSourceElement = null;
       }
     };
-  }, []);
+  }, [videoRef]);
 
   return {
     audioBoostFactor,
