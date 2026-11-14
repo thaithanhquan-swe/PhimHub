@@ -1,20 +1,30 @@
 import Hls from "hls.js";
 import { describe, expect, it } from "vitest";
-import { cleanHlsPlaylist, isAdSegmentUrl } from "@/lib/adBlockPlaylist";
+import { cleanHlsPlaylist, isAdSegmentUrl, makeHlsUrlsAbsolute } from "@/lib/adBlockPlaylist";
 
 describe("AdBlock Playlist Filter", () => {
   it("detects various ad segment patterns correctly", () => {
     // Should identify ads
     expect(isAdSegmentUrl("convertv9/CQvNBUVa.ts")).toBe(true);
     expect(isAdSegmentUrl("convertv7/TAAUMVUF.ts")).toBe(true);
+    expect(isAdSegmentUrl("converted/clip.ts")).toBe(true);
+    expect(isAdSegmentUrl("convert/intro.ts")).toBe(true);
     expect(isAdSegmentUrl("/v9/d3b54219ece57fa7c8af6d2076384ce0/segment_0001.ts")).toBe(true);
+    expect(isAdSegmentUrl("/v9/custom_hash_12345/segment_0001.ts")).toBe(true);
     expect(isAdSegmentUrl("segment_0008.ts")).toBe(true);
+    expect(isAdSegmentUrl("segment0008.ts")).toBe(true);
     expect(isAdSegmentUrl("quangcao_1.ts")).toBe(true);
+    expect(isAdSegmentUrl("qc_intro.ts")).toBe(true);
     expect(isAdSegmentUrl("ad_banner.ts")).toBe(true);
     expect(isAdSegmentUrl("https://1999.ai/ad.ts")).toBe(true);
     expect(isAdSegmentUrl("https://doubleclick.net/video.ts")).toBe(true);
     expect(isAdSegmentUrl("https://fb88.com/stream/ad.ts")).toBe(true);
     expect(isAdSegmentUrl("https://okvip.media/clip.ts")).toBe(true);
+    expect(isAdSegmentUrl("okvip_clip.ts")).toBe(true);
+    expect(isAdSegmentUrl("kubet88_spot.ts")).toBe(true);
+    expect(isAdSegmentUrl("1999ai_preroll.ts")).toBe(true);
+    expect(isAdSegmentUrl("taixiu_ad.ts")).toBe(true);
+    expect(isAdSegmentUrl("nohu_jackpot.ts")).toBe(true);
     expect(isAdSegmentUrl("convert_ads/ad1.ts")).toBe(true);
     expect(isAdSegmentUrl("/v7/d61a03b1dabe537cc05ffe5c9c280f56/segment_0001.ts")).toBe(true);
 
@@ -25,6 +35,12 @@ describe("AdBlock Playlist Filter", () => {
     expect(isAdSegmentUrl("ak4K4adp.ts")).toBe(false); // contains 'ad' in random hash
     expect(isAdSegmentUrl("ep1_001.ts")).toBe(false);
     expect(isAdSegmentUrl("chunk-1080p-001.ts")).toBe(false);
+    expect(isAdSegmentUrl("5U7nPKi3.ts")).toBe(false);
+    expect(isAdSegmentUrl("mL67UyKI.ts")).toBe(false);
+    expect(isAdSegmentUrl("kv9LLXEp.ts")).toBe(false);
+    expect(isAdSegmentUrl("jhUmv7Vp.ts")).toBe(false);
+    expect(isAdSegmentUrl("fAFxvIv9.ts")).toBe(false);
+    expect(isAdSegmentUrl("JCev9XYc.ts")).toBe(false);
   });
 
   it("removes preroll ads without leaving orphan discontinuities", () => {
@@ -201,5 +217,23 @@ describe("AdBlock Playlist Filter", () => {
 
     expect(interceptedData).not.toContain("convertv9");
     expect(interceptedData).toContain("part1.ts");
+  });
+
+  it("converts relative URLs to absolute URLs correctly for native HLS", () => {
+    const raw = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      '#EXT-X-KEY:METHOD=AES-128,URI="enc.key"',
+      "#EXTINF:4.0,",
+      "segment1.ts",
+      "#EXTINF:4.0,",
+      "https://external.cdn/segment2.ts",
+      "#EXT-X-ENDLIST",
+    ].join("\n");
+
+    const converted = makeHlsUrlsAbsolute(raw, "https://example.com/media/index.m3u8");
+    expect(converted).toContain('URI="https://example.com/media/enc.key"');
+    expect(converted).toContain("https://example.com/media/segment1.ts");
+    expect(converted).toContain("https://external.cdn/segment2.ts");
   });
 });
