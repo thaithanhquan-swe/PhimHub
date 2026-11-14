@@ -50,7 +50,13 @@ export function VideoPlayer({
     }
     return 1;
   });
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    try {
+      return localStorage.getItem("phimhub_player_muted") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [canAdjustVolume, setCanAdjustVolume] = useState(true);
   const [isVolumeSliderOpen, setIsVolumeSliderOpen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -170,7 +176,14 @@ export function VideoPlayer({
     onNextEpisode,
     onTimeUpdate,
     onFallbackToEmbed: () => setUseEmbedFallback(true),
-    onSetMuted: setIsMuted,
+    onSetMuted: (muted) => {
+      setIsMuted(muted);
+      try {
+        localStorage.setItem("phimhub_player_muted", String(muted));
+      } catch {
+        // Ignore
+      }
+    },
   });
 
   // Restore saved volume and sync audio boost on video mount / F5 / episode change
@@ -180,6 +193,7 @@ export function VideoPlayer({
 
     try {
       video.volume = volume;
+      video.muted = isMuted;
     } catch {
       // Ignore read-only volume on iOS Safari
     }
@@ -188,7 +202,7 @@ export function VideoPlayer({
       initAudioGain();
       resumeAudioContext();
     }
-  }, [volume, audioBoostFactor, m3u8Url, initAudioGain, resumeAudioContext]);
+  }, [volume, isMuted, audioBoostFactor, m3u8Url, initAudioGain, resumeAudioContext]);
 
   // Playback control actions
   function togglePlay() {
@@ -258,6 +272,11 @@ export function VideoPlayer({
     if (clampedVol > 0 && isMuted) {
       video.muted = false;
       setIsMuted(false);
+      try {
+        localStorage.setItem("phimhub_player_muted", "false");
+      } catch {
+        // Ignore
+      }
     }
     try {
       localStorage.setItem("phimhub_player_volume", String(clampedVol));
@@ -274,10 +293,20 @@ export function VideoPlayer({
     if (isMuted) {
       video.muted = false;
       setIsMuted(false);
+      try {
+        localStorage.setItem("phimhub_player_muted", "false");
+      } catch {
+        // Ignore
+      }
       if (volume === 0) changeVolume(0.5);
     } else {
       video.muted = true;
       setIsMuted(true);
+      try {
+        localStorage.setItem("phimhub_player_muted", "true");
+      } catch {
+        // Ignore
+      }
     }
   }
 
