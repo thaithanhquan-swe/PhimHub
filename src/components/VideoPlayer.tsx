@@ -172,6 +172,23 @@ export function VideoPlayer({
     onSetMuted: setIsMuted,
   });
 
+  // Restore saved volume and sync audio boost on video mount / F5
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    try {
+      video.volume = volume;
+    } catch {
+      // Ignore read-only volume on iOS Safari
+    }
+
+    if (audioBoostFactor > 1) {
+      initAudioGain();
+      resumeAudioContext();
+    }
+  }, [volume, audioBoostFactor, initAudioGain, resumeAudioContext]);
+
   // Playback control actions
   function togglePlay() {
     const now = Date.now();
@@ -180,6 +197,9 @@ export function VideoPlayer({
 
     const video = videoRef.current;
     if (!video) return;
+    if (audioBoostFactor > 1) {
+      initAudioGain();
+    }
     resumeAudioContext();
     if (video.paused) {
       video.play().catch(() => {});
