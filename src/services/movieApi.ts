@@ -1132,112 +1132,186 @@ export type FranchisePart = {
   isCurrent: boolean;
 };
 
+function normalizeBaseTitle(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseRomanNumeral(str: string): number | null {
+  const romanMap: Record<string, number> = {
+    i: 1, ii: 2, iii: 3, iv: 4, v: 5,
+    vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
+    xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15,
+    xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20,
+  };
+  return romanMap[str.toLowerCase()] || null;
+}
+
+export function parseSeasonInfo(
+  title: string,
+  slug: string,
+): {
+  season: number | null;
+  baseTitle: string;
+  baseSlug: string;
+  normBase: string;
+} {
+  let season: number | null = null;
+  let baseTitle = title.trim();
+
+  // 1. Strip release years and subtitle/audio tags from end repeatedly
+  let prevTitle = "";
+  while (prevTitle !== baseTitle) {
+    prevTitle = baseTitle;
+    baseTitle = baseTitle
+      .replace(
+        /(?:\s*[\(\[\{]?(?:thuyết minh|lồng tiếng|vietsub|raw|full|hd|cam|bản đẹp|trọn bộ|tập cuối)[\)\]\}]?\s*)+$/i,
+        "",
+      )
+      .replace(/(?:\s*[\(\[\{]?(?:19\d{2}|20\d{2})[\)\]\}]?\s*)+$/, "")
+      .trim()
+      .replace(/[-–:\s]+$/, "");
+  }
+
+  // 2. Match explicit season tag in title: (Phần X), Phần X, Season X, Mùa X, Part X, SS X, Phần II
+  const seasonRegex = /[\(\[\{]?(?:phần|season|mùa|part|ss)\s*(\d{1,2}|[ivx]+)[\)\]\}]?\s*$/i;
+  const tm = baseTitle.match(seasonRegex);
+  if (tm) {
+    const rawVal = tm[1];
+    const parsedNum = /^\d+$/.test(rawVal) ? parseInt(rawVal, 10) : parseRomanNumeral(rawVal);
+    if (parsedNum && parsedNum >= 1 && parsedNum <= 30) {
+      season = parsedNum;
+      baseTitle = baseTitle.replace(seasonRegex, "").trim().replace(/[-–:\s]+$/, "");
+    }
+  } else {
+    // Check trailing number or roman numeral: e.g. 'Âm Thanh Tội Phạm 2', 'Iron Man 3'
+    const trailingNumRegex = /\s+(\d{1,2}|[ivx]+)\s*$/i;
+    const tnm = baseTitle.match(trailingNumRegex);
+    if (tnm) {
+      const rawVal = tnm[1];
+      const parsedNum = /^\d+$/.test(rawVal) ? parseInt(rawVal, 10) : parseRomanNumeral(rawVal);
+      if (parsedNum && parsedNum >= 1 && parsedNum <= 30) {
+        season = parsedNum;
+        baseTitle = baseTitle.replace(trailingNumRegex, "").trim().replace(/[-–:\s]+$/, "");
+      }
+    }
+  }
+
+  // 3. Clean slug and check for season tag
+  let cleanSlug = slug;
+  let prevSlug = "";
+  while (prevSlug !== cleanSlug) {
+    prevSlug = cleanSlug;
+    cleanSlug = cleanSlug
+      .replace(/-(?:19\d{2}|20\d{2})$/, "")
+      .replace(/-(?:vietsub|thuyet-minh|long-tieng|raw|full|hd|cam)$/i, "");
+  }
+
+  const slugSeasonRegex = /-(?:phan|season|part|ss|mua)?-?(\d{1,2}|[ivx]+)$/i;
+  const sm = cleanSlug.match(slugSeasonRegex);
+  let baseSlug = cleanSlug;
+  if (sm) {
+    const rawVal = sm[1];
+    const sNum = /^\d+$/.test(rawVal) ? parseInt(rawVal, 10) : parseRomanNumeral(rawVal);
+    if (sNum && sNum >= 1 && sNum <= 30) {
+      if (season === null) season = sNum;
+      baseSlug = cleanSlug.replace(slugSeasonRegex, "");
+    }
+  }
+
+  return { season, baseTitle, baseSlug, normBase: normalizeBaseTitle(baseTitle) };
+}
+
 export async function getFranchiseParts(
   movie: { title: string; slug: string; kind?: string },
   signal?: AbortSignal,
 ): Promise<FranchisePart[]> {
   try {
-    // 1. Extract clean base/franchise title (strip season numbers, part tags)
-    let clean = movie.title
-      .replace(/[\(\[\{]?(?:phần|season|mùa|part)\s*\d+[\)\]\}]?/gi, "")
-      .replace(/\s*:\s*(?:phần|season|mùa|part)\s*\d+/gi, "");
+    const current = parseSeasonInfo(movie.title, movie.slug);
+    if (!current.baseTitle || current.baseTitle.length < 2) return [];
 
-    if (clean.includes(":")) {
-      const parts = clean.split(":");
-      if (parts[0].trim().length >= 4) {
-        clean = parts[0];
-      }
-    }
-    clean = clean.trim().replace(/^[-–:\s]+|[-–:\s]+$/g, "");
-
-    if (clean.length < 3) return [];
-
-    // 2. Search for candidate titles in this franchise
-    const results = await searchMovies(clean, 1, signal);
+    const results = await searchMovies(current.baseTitle, 1, signal);
     if (!results || results.length < 2) return [];
 
-    const rootKw = clean.toLowerCase();
-    const rootSlugPrefix = movie.slug.replace(/-(?:phan|season|part|ss)-\d+.*$/, "");
+    const matched: (FranchisePart & { season: number })[] = [];
 
-    // 3. Filter candidates belonging to the same franchise
-    const franchiseItems = results.filter((item) => {
-      const t = item.title.toLowerCase();
-      const s = item.slug.toLowerCase();
-      return (
-        t.includes(rootKw) ||
-        s.startsWith(rootSlugPrefix) ||
-        (item.originalTitle && movie.title.toLowerCase().includes(item.originalTitle.toLowerCase()))
-      );
-    });
+    for (const item of results) {
+      const cInfo = parseSeasonInfo(item.title, item.slug);
+      const slugMatch = item.slug === current.baseSlug || cInfo.baseSlug === current.baseSlug;
+      const titleMatch = cInfo.normBase === current.normBase;
 
-    if (franchiseItems.length < 2) return [];
+      // Strict franchise boundary check: Reject any movie whose base title or base slug doesn't match the franchise!
+      if (!slugMatch && !titleMatch) continue;
 
-    // Helper to determine part label matching user's reference:
-    // "Phần Special", "Phần TV Series", "Phần Movie", "Phần 1", "Phần 2", etc.
-    function determinePartLabel(item: Movie): { label: string; priority: number } {
-      const t = item.title.toLowerCase();
-      const s = item.slug.toLowerCase();
-
-      // Special / OVA
-      if (t.includes("special") || s.includes("special") || t.includes("đặc biệt") || t.includes("ova")) {
-        return { label: "Phần Special", priority: 80 };
+      // Reject candidates that have extra subtitles or different names
+      if (
+        cInfo.season === null &&
+        item.slug !== current.baseSlug &&
+        cInfo.normBase !== current.normBase
+      ) {
+        continue;
       }
 
-      // TV Series
-      if (t.includes("tv series") || s.includes("tv-series") || (t.includes("series") && !t.includes("movie"))) {
-        return { label: "Phần TV Series", priority: 70 };
-      }
-
-      // Numbered Seasons: Phần 1, Phần 2, Phần 3...
-      const mTitle = t.match(/(?:phần|season|mùa|part)\s*(\d+)/i);
-      if (mTitle) {
-        const num = parseInt(mTitle[1], 10);
-        return { label: `Phần ${num}`, priority: num };
-      }
-
-      const mSlug = s.match(/(?:phan|season|part|ss)-?(\d+)/i);
-      if (mSlug) {
-        const num = parseInt(mSlug[1], 10);
-        return { label: `Phần ${num}`, priority: num };
-      }
-
-      // Movie / Chiếu rạp
-      if (t.includes("movie") || s.includes("movie") || t.includes("chiếu rạp") || item.kind === "Phim lẻ") {
-        return { label: "Phần Movie", priority: 90 };
-      }
-
-      return { label: "Phần 1", priority: 1 };
-    }
-
-    // Map and avoid duplicate labels
-    const labelCounts = new Map<string, number>();
-    const mapped: (FranchisePart & { priority: number })[] = franchiseItems.map((item) => {
-      const { label, priority } = determinePartLabel(item);
-      const count = (labelCounts.get(label) || 0) + 1;
-      labelCounts.set(label, count);
-
-      let finalLabel = label;
-      if (count > 1) {
-        finalLabel = `${label} (${item.year || count})`;
-      }
-
-      return {
+      const seasonNum = cInfo.season || 1;
+      matched.push({
         id: item.id || item.slug,
         slug: item.slug,
         title: item.title,
-        partLabel: finalLabel,
+        partLabel: `Phần ${seasonNum}`,
+        season: seasonNum,
         year: item.year,
         quality: item.quality,
         posterUrl: item.posterUrl,
         isCurrent: item.slug === movie.slug,
-        priority,
-      };
-    });
+      });
+    }
 
-    // Sort by priority (Phần 1, Phần 2, Phần 3... then TV Series, then Movie, then Special)
-    mapped.sort((a, b) => a.priority - b.priority);
+    // Ensure current movie itself is included in matched
+    if (!matched.some((m) => m.isCurrent)) {
+      const currentSeasonNum = current.season || 1;
+      matched.push({
+        id: movie.slug,
+        slug: movie.slug,
+        title: movie.title,
+        partLabel: `Phần ${currentSeasonNum}`,
+        season: currentSeasonNum,
+        year: undefined,
+        isCurrent: true,
+      });
+    }
 
-    return mapped.map(({ priority, ...rest }) => rest);
+    // Deduplicate: exactly ONE button per season number!
+    const bySeason = new Map<number, FranchisePart & { season: number }>();
+    for (const item of matched) {
+      if (!bySeason.has(item.season)) {
+        bySeason.set(item.season, item);
+      } else {
+        const existing = bySeason.get(item.season)!;
+        if (item.isCurrent) {
+          bySeason.set(item.season, item);
+        } else if (
+          !existing.isCurrent &&
+          (item.slug === `${current.baseSlug}-phan-${item.season}` ||
+            item.slug === current.baseSlug)
+        ) {
+          bySeason.set(item.season, item);
+        }
+      }
+    }
+
+    const list = Array.from(bySeason.values()).sort((a, b) => a.season - b.season);
+
+    // ONLY show franchise selector if there are at least 2 distinct seasons, AND at least one season > 1
+    if (list.length <= 1 || !list.some((x) => x.season > 1)) {
+      return [];
+    }
+
+    return list.map(({ season, ...rest }) => rest);
   } catch {
     return [];
   }
