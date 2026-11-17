@@ -4,7 +4,7 @@ import {
   Film,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -19,8 +19,10 @@ import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl } from "@/data/movies";
 import { cn } from "@/lib/utils";
 import {
+  getActiveProvider,
   getFilteredCatalog,
   getHomeSections,
+  subscribeProviderChange,
   type FilterParams,
 } from "@/services/movieApi";
 
@@ -28,6 +30,13 @@ export function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { movies: savedMovies, clear: clearSavedMovies } = useWatchlist();
+  const [, setProviderTick] = useState(0);
+
+  useEffect(() => {
+    return subscribeProviderChange(() => {
+      setProviderTick((t) => t + 1);
+    });
+  }, []);
 
   const typeParam = searchParams.get("type"); // "tv" | "movie" | "hoat-hinh" | null
   const genreParam = searchParams.get("genre") || "all";
@@ -44,8 +53,9 @@ export function HomePage() {
       (yearParam && yearParam !== "all"),
   );
 
+  const currentProvider = getActiveProvider();
   const homeQuery = useQuery({
-    queryKey: ["home-sections", null],
+    queryKey: ["home-sections", null, currentProvider],
     queryFn: ({ signal }) => getHomeSections(signal, null),
     enabled: !isFilterMode && !savedOnly,
   });
@@ -59,6 +69,7 @@ export function HomePage() {
   const catalogQuery = useQuery({
     queryKey: [
       "filtered-catalog",
+      currentProvider,
       filterParams.type,
       filterParams.genre,
       filterParams.country,

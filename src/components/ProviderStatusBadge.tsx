@@ -1,10 +1,13 @@
+import { ArrowLeftRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
   getActiveProvider,
   getProvidersStatus,
+  setActiveProvider,
   subscribeProviderChange,
 } from "@/services/movieApi";
+import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 export function ProviderStatusBadge({ className }: { className?: string }) {
@@ -19,10 +22,18 @@ export function ProviderStatusBadge({ className }: { className?: string }) {
     });
   }, []);
 
+  function handleToggle(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = provider.id === "phimapi" ? "nguonc" : "phimapi";
+    setActiveProvider(next);
+    void queryClient.invalidateQueries();
+  }
+
   const isPhimApi = provider.id === "phimapi";
   const statusLabel = {
     unknown: "Chưa kiểm tra",
-    online: "API phản hồi gần đây",
+    online: "API phản hồi tốt",
     degraded: "API lỗi gần đây",
     offline: "API không phản hồi",
   }[provider.status];
@@ -34,12 +45,15 @@ export function ProviderStatusBadge({ className }: { className?: string }) {
   }[provider.status];
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={handleToggle}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white/85 select-none shadow-sm backdrop-blur-md",
+        "group inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white/85 select-none shadow-sm backdrop-blur-md hover:border-primary/50 hover:bg-white/10 active:scale-95 transition-all cursor-pointer",
         className,
       )}
-      title={`Trạng thái API danh mục ${provider.name}: ${statusLabel}${provider.lastError ? ` — ${provider.lastError}` : ""}. Trạng thái này không xác nhận luồng video.`}
+      title={`Nguồn API: ${provider.name} (${statusLabel}). Bấm để đổi sang ${isPhimApi ? "NguonC" : "PhimAPI"}.`}
+      aria-label={`Đổi nguồn phim, hiện tại là ${provider.name}`}
     >
       <span className="relative flex size-2 shrink-0">
         {provider.status === "online" && (
@@ -54,6 +68,7 @@ export function ProviderStatusBadge({ className }: { className?: string }) {
       <span className="hidden md:inline rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-white/60 font-normal">
         {statusLabel}
       </span>
-    </div>
+      <ArrowLeftRight className="size-3 text-white/40 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 hidden sm:inline" />
+    </button>
   );
 }

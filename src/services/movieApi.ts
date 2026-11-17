@@ -61,12 +61,15 @@ const PROVIDER_CONFIGS: Record<
 const STORAGE_KEY = "phimhub_active_provider";
 let activeProvider: ApiProviderId = "phimapi";
 
-// Ensure we don't stay locked into broken NguonC from any previous session
+// Reset stuck nguonc from previous sessions to ensure fast, reliable primary
 if (typeof window !== "undefined") {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "nguonc") {
+    if (saved === "phimapi") {
+      activeProvider = "phimapi";
+    } else if (saved === "nguonc") {
       localStorage.removeItem(STORAGE_KEY);
+      activeProvider = "phimapi";
     }
   } catch {
     // Ignore storage errors
@@ -208,6 +211,8 @@ async function fetchJson<T>(url: string, signal?: AbortSignal, timeoutMs = 8000)
   }
 }
 
+let consecutivePrimaryFailures = 0;
+
 // Generic failover executor: Tries primary, on error automatically falls back to secondary
 async function executeWithFailover<T>(
   operation: (provider: ApiProviderId) => Promise<T>,
@@ -218,6 +223,7 @@ async function executeWithFailover<T>(
   try {
     const data = await operation(primary);
     updateProviderHealth(primary, "online");
+    consecutivePrimaryFailures = 0;
     return { data, provider: primary };
   } catch (primaryErr) {
     // CRITICAL: If aborted by React unmount / page navigation, do NOT treat as provider failure!
@@ -229,13 +235,16 @@ async function executeWithFailover<T>(
     console.warn(`[Failover] Nguồn ${PROVIDER_CONFIGS[primary].name} gặp sự cố (${errMsg}). Tự động luân phiên sang ${PROVIDER_CONFIGS[fallback].name}...`);
 
     updateProviderHealth(primary, "degraded", errMsg);
+    consecutivePrimaryFailures++;
 
     try {
       const data = await operation(fallback);
       updateProviderHealth(fallback, "online");
       
-      // Auto-switch active provider to healthy fallback
-      setActiveProvider(fallback);
+      // Only switch global default provider if primary fails 3 times consecutively
+      if (consecutivePrimaryFailures >= 3) {
+        setActiveProvider(fallback);
+      }
       return { data, provider: fallback };
     } catch (fallbackErr) {
       if (fallbackErr instanceof Error && (fallbackErr.name === "AbortError" || fallbackErr.message.includes("aborted"))) {
@@ -529,12 +538,15 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
 // Slug compatibility helpers between PhimAPI & NguonC
 // -------------------------------------------------------------
 function toPhimApiGenreSlug(slug: string): string {
-  if (slug === "hai") return "hai-huoc";
+  if (slug === "hai" || slug === "phim-hai") return "hai-huoc";
+  if (slug === "khoa-hoc-vien-tuong") return "vien-tuong";
+  if (slug === "gay-can") return "bi-an";
   return slug;
 }
 
 function toNguonCGenreSlug(slug: string): string {
-  if (slug === "hai-huoc") return "hai";
+  if (slug === "hai-huoc" || slug === "hai") return "phim-hai";
+  if (slug === "vien-tuong") return "khoa-hoc-vien-tuong";
   return slug;
 }
 
@@ -962,25 +974,32 @@ export async function getFilteredCatalog(
 
   const result = await executeWithFailover(async (provider) => {
     if (provider === "phimapi") {
-      let endpoint = `https://phimapi.com/danh-sach/phim-moi-cap-nhat?page=${page}`;
-
-      if (params.genre && params.genre !== "all") {
-        endpoint = `https://phimapi.com/v1/api/the-loai/${toPhimApiGenreSlug(params.genre)}?page=${page}`;
-      } else if (params.country && params.country !== "all") {
-        endpoint = `https://phimapi.com/v1/api/quoc-gia/${toPhimApiCountrySlug(params.country)}?page=${page}`;
-      } else if (params.year && params.year !== "all") {
-        endpoint = `https://phimapi.com/v1/api/nam-phat-hanh/${params.year}?page=${page}`;
-      } else if (params.type && params.type !== "all") {
-        const typeSlug =
-          params.type === "tv"
-            ? "phim-bo"
-            : params.type === "movie"
-              ? "phim-le"
-              : params.type;
-        endpoint = `https://phimapi.com/v1/api/danh-sach/${typeSlug}?page=${page}`;
+      let typeSlug = "phim-moi";
+      if (params.type === "tv" || params.type === "phim-bo") {
+        typeSlug = "phim-bo";
+      } else if (params.type === "movie" || params.type === "phim-le") {
+        typeSlug = "phim-le";
+      } else if (params.type === "hoat-hinh") {
+        typeSlug = "hoat-hinh";
+      } else if (params.type === "tv-shows") {
+        typeSlug = "tv-shows";
       }
 
-      const data = await fetchJson<PhimApiListResponse>(endpoint, signal);
+      const url = new URL(`https://phimapi.com/v1/api/danh-sach/${typeSlug}`);
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("sort_field", "modified.time");
+
+      if (params.genre && params.genre !== "all") {
+        url.searchParams.set("category", toPhimApiGenreSlug(params.genre));
+      }
+      if (params.country && params.country !== "all") {
+        url.searchParams.set("country", toPhimApiCountrySlug(params.country));
+      }
+      if (params.year && params.year !== "all") {
+        url.searchParams.set("year", String(params.year));
+      }
+
+      const data = await fetchJson<PhimApiListResponse>(url.toString(), signal);
       const items = data.data?.items || data.items || [];
       const movies = items.map((m) => mapPhimApiMovie(m, data.data?.APP_DOMAIN_CDN_IMAGE));
       const pag = data.data?.params?.pagination || data.pagination;
@@ -989,19 +1008,24 @@ export async function getFilteredCatalog(
         movies,
         currentPage: pag?.currentPage || page,
         totalPage: pag?.totalPages || 1,
-        totalItems: pag?.totalItems || movies.length,
+        totalItems: pag?.totalItems ?? movies.length,
         provider: "phimapi" as ApiProviderId,
       };
     } else {
+      // NguonC
       let endpoint = `https://phim.nguonc.com/api/films/phim-moi-cap-nhat?page=${page}`;
+      const hasGenre = Boolean(params.genre && params.genre !== "all");
+      const hasCountry = Boolean(params.country && params.country !== "all");
+      const hasYear = Boolean(params.year && params.year !== "all");
+      const hasType = Boolean(params.type && params.type !== "all");
 
-      if (params.genre && params.genre !== "all") {
-        endpoint = `https://phim.nguonc.com/api/films/the-loai/${toNguonCGenreSlug(params.genre)}?page=${page}`;
-      } else if (params.country && params.country !== "all") {
-        endpoint = `https://phim.nguonc.com/api/films/quoc-gia/${toNguonCCountrySlug(params.country)}?page=${page}`;
-      } else if (params.year && params.year !== "all") {
+      if (hasCountry) {
+        endpoint = `https://phim.nguonc.com/api/films/quoc-gia/${toNguonCCountrySlug(params.country!)}?page=${page}`;
+      } else if (hasGenre) {
+        endpoint = `https://phim.nguonc.com/api/films/the-loai/${toNguonCGenreSlug(params.genre!)}?page=${page}`;
+      } else if (hasYear) {
         endpoint = `https://phim.nguonc.com/api/films/nam-phat-hanh/${params.year}?page=${page}`;
-      } else if (params.type && params.type !== "all") {
+      } else if (hasType) {
         const typeSlug =
           params.type === "tv"
             ? "phim-bo"
@@ -1012,13 +1036,80 @@ export async function getFilteredCatalog(
       }
 
       const data = await fetchJson<NguonCListResponse>(endpoint, signal);
-      const movies = (data.items || []).map(mapNguonCMovie);
+      let movies = (data.items || []).map(mapNguonCMovie);
+
+      // Client-side filtering on NguonC for unhandled dimensions
+      if (hasYear) {
+        const targetYear = String(params.year);
+        movies = movies.filter((m) => String(m.year) === targetYear);
+      }
+
+      if (hasType) {
+        if (params.type === "tv" || params.type === "phim-bo") {
+          movies = movies.filter(
+            (m) =>
+              m.kind === "Series" ||
+              (m.totalEpisodes !== undefined && m.totalEpisodes > 1) ||
+              (m.currentEpisode !== undefined && !m.currentEpisode.toLowerCase().includes("full")),
+          );
+        } else if (params.type === "movie" || params.type === "phim-le") {
+          movies = movies.filter(
+            (m) =>
+              m.kind === "Phim lẻ" ||
+              m.totalEpisodes === 1 ||
+              (m.currentEpisode !== undefined && m.currentEpisode.toLowerCase().includes("full")),
+          );
+        }
+      }
+
+      if (hasCountry && hasGenre) {
+        const targetGenreLabel =
+          FILTER_OPTIONS.genres.find((g) => g.value === params.genre)?.label.toLowerCase() ||
+          params.genre!.toLowerCase();
+
+        const enriched = await Promise.all(
+          movies.map(async (m) => {
+            try {
+              const detail = await fetchJson<NguonCDetailResponse>(
+                `https://phim.nguonc.com/api/film/${m.slug}`,
+                signal,
+              );
+              const cats = detail.movie?.category;
+              const genres: string[] = [];
+              if (cats && typeof cats === "object") {
+                Object.values(cats).forEach((cat) => {
+                  (cat.list || []).forEach((entry) => {
+                    if (entry.name) genres.push(entry.name.toLowerCase());
+                  });
+                });
+              }
+              return { movie: m, genres };
+            } catch {
+              return { movie: m, genres: [] };
+            }
+          }),
+        );
+
+        movies = enriched
+          .filter(({ genres }) =>
+            genres.some((g) => g.includes(targetGenreLabel) || targetGenreLabel.includes(g)),
+          )
+          .map(({ movie }) => movie);
+      }
+
+      const isMultiFiltered = [hasGenre, hasCountry, hasYear, hasType].filter(Boolean).length > 1;
+      const totalItems = isMultiFiltered
+        ? movies.length
+        : data.paginate?.total_items || movies.length;
+      const totalPage = isMultiFiltered
+        ? Math.max(1, Math.ceil(movies.length / 24))
+        : data.paginate?.total_page || 1;
 
       return {
         movies,
         currentPage: data.paginate?.current_page || page,
-        totalPage: data.paginate?.total_page || 1,
-        totalItems: data.paginate?.total_items || movies.length,
+        totalPage,
+        totalItems,
         provider: "nguonc" as ApiProviderId,
       };
     }

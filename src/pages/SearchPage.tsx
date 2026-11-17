@@ -20,11 +20,11 @@ const QUICK_FILTERS = [
   { label: "Mới cập nhật", type: "new", slug: "" },
   { label: "Phim bộ", type: "cat", slug: "phim-bo" },
   { label: "Phim lẻ", type: "cat", slug: "phim-le" },
-  { label: "Hoạt hình", type: "genre", slug: "hoat-hinh" },
+  { label: "Hoạt hình", type: "cat", slug: "hoat-hinh" },
   { label: "Hành động", type: "genre", slug: "hanh-dong" },
   { label: "Kinh dị", type: "genre", slug: "kinh-di" },
   { label: "Tình cảm", type: "genre", slug: "tinh-cam" },
-  { label: "Hài hước", type: "genre", slug: "hai" },
+  { label: "Hài hước", type: "genre", slug: "hai-huoc" },
   { label: "Khoa học viễn tưởng", type: "genre", slug: "khoa-hoc-vien-tuong" },
   { label: "TV Shows", type: "cat", slug: "tv-shows" },
 ];
