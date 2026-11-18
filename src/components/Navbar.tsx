@@ -61,6 +61,7 @@ export function Navbar() {
   const currentGenre = searchParams.get("genre");
   const currentCountry = searchParams.get("country");
   const currentYear = searchParams.get("year");
+  const currentImdb = searchParams.get("imdb");
   const isSavedList = searchParams.get("list") === "saved";
 
   function isItemActive(id: string): boolean {
@@ -71,11 +72,13 @@ export function Navbar() {
         !currentGenre &&
         !currentCountry &&
         !currentYear &&
+        !currentImdb &&
         !isSavedList
       );
     }
-    if (id === "tv") return currentPath === "/" && currentType === "tv";
-    if (id === "movie") return currentPath === "/" && currentType === "movie";
+    if (id === "top-imdb") return currentPath === "/" && Boolean(currentImdb);
+    if (id === "tv") return currentPath === "/" && currentType === "tv" && !currentImdb;
+    if (id === "movie") return currentPath === "/" && currentType === "movie" && !currentImdb;
     if (id === "hoat-hinh") return currentPath === "/" && currentType === "hoat-hinh";
     if (id === "schedule") return currentPath === "/schedule";
     if (id === "search") return currentPath === "/search";
@@ -83,7 +86,7 @@ export function Navbar() {
     return false;
   }
 
-  function handleNavbarFilter(key: "genre" | "country" | "year", val: string) {
+  function handleNavbarFilter(key: "genre" | "country" | "year" | "imdb", val: string) {
     const next = new URLSearchParams(searchParams);
     if (val === "all") {
       next.delete(key);
@@ -161,6 +164,13 @@ export function Navbar() {
               onChange={(y) => handleNavbarFilter("year", y)}
               columns={3}
             />
+            <DropdownFilter
+              label="Điểm IMDb"
+              value={currentImdb || "all"}
+              options={FILTER_OPTIONS.imdbRatings}
+              onChange={(i) => handleNavbarFilter("imdb", i)}
+              columns={2}
+            />
           </div>
         </nav>
 
@@ -191,6 +201,7 @@ export function Navbar() {
         isItemActive={isItemActive}
         currentGenre={currentGenre}
         currentCountry={currentCountry}
+        currentImdb={currentImdb}
         onFilterChange={handleNavbarFilter}
         onInstall={triggerInstall}
       />

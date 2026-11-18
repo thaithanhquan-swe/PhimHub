@@ -13,11 +13,14 @@ import {
   getMoviesByCategory,
   getMoviesByGenre,
   getNewUpdatedMovies,
+  getTopImdbMovies,
   searchMovies,
 } from "@/services/movieApi";
 
 const QUICK_FILTERS = [
   { label: "Mới cập nhật", type: "new", slug: "" },
+  { label: "Top IMDb Phim Lẻ", type: "top-imdb", slug: "movie" },
+  { label: "Top IMDb Phim Bộ", type: "top-imdb", slug: "tv" },
   { label: "Phim bộ", type: "cat", slug: "phim-bo" },
   { label: "Phim lẻ", type: "cat", slug: "phim-le" },
   { label: "Hoạt hình", type: "cat", slug: "hoat-hinh" },
@@ -78,6 +81,9 @@ export function SearchPage() {
       : ["quick-filter", activeQuickFilter.type, activeQuickFilter.slug],
     queryFn: ({ signal }) => {
       if (debouncedQuery) return searchMovies(debouncedQuery, 1, signal);
+      if (activeQuickFilter.type === "top-imdb") {
+        return getTopImdbMovies(activeQuickFilter.slug as "movie" | "tv", 24, signal);
+      }
       if (activeQuickFilter.type === "cat") {
         return getMoviesByCategory(activeQuickFilter.slug, 1, signal);
       }

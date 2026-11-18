@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { getFilteredCatalog, setActiveProvider } from "@/services/movieApi";
+import { getFilteredCatalog, getTopImdbMovies, setActiveProvider } from "@/services/movieApi";
 
 describe("Catalog Filter System", () => {
   beforeEach(() => {
@@ -161,6 +161,122 @@ describe("Catalog Filter System", () => {
     // Only Họa Sĩ Gió matches Cổ Trang
     expect(result.movies).toHaveLength(1);
     expect(result.movies[0].title).toBe("Họa Sĩ Gió");
+  });
+
+  it("filters and sorts movies by IMDb rating on PhimAPI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: true,
+        data: {
+          items: [
+            {
+              name: "Phim Điểm Thấp",
+              slug: "phim-diem-thap",
+              year: 2024,
+              imdb: { id: "tt1111111", vote_average: 6.2 },
+            },
+            {
+              name: "Phim Rất Hay",
+              slug: "phim-rat-hay",
+              year: 2024,
+              imdb: { id: "tt2222222", vote_average: 8.5 },
+            },
+            {
+              name: "Phim Khá Hay",
+              slug: "phim-kha-hay",
+              year: 2024,
+              imdb: { id: "tt3333333", vote_average: 7.6 },
+            },
+          ],
+          params: {
+            pagination: { totalItems: 3, totalPages: 1, currentPage: 1, totalItemsPerPage: 24 },
+          },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Filter with IMDb >= 7.5
+    const result = await getFilteredCatalog({
+      type: "movie",
+      imdb: "7.5",
+    });
+
+    expect(result.movies).toHaveLength(2);
+    // Highest rating first
+    expect(result.movies[0].title).toBe("Phim Rất Hay");
+    expect(result.movies[0].imdbRating).toBe(8.5);
+    expect(result.movies[1].title).toBe("Phim Khá Hay");
+    expect(result.movies[1].imdbRating).toBe(7.6);
+  });
+
+  it("filters movies by IMDb rating on NguonC", async () => {
+    setActiveProvider("nguonc");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "success",
+        items: [
+          {
+            name: "Phim NguonC Điểm Thấp",
+            slug: "nguonc-thap",
+            imdb: { rating: 5.5 },
+          },
+          {
+            name: "Phim NguonC Điểm Cao",
+            slug: "nguonc-cao",
+            imdb: { rating: 8.2 },
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getFilteredCatalog({
+      type: "movie",
+      imdb: "8.0",
+    });
+
+    expect(result.provider).toBe("nguonc");
+    expect(result.movies).toHaveLength(1);
+    expect(result.movies[0].title).toBe("Phim NguonC Điểm Cao");
+    expect(result.movies[0].imdbRating).toBe(8.2);
+  });
+
+  it("fetches top IMDb movies correctly and orders by rating", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: true,
+        data: {
+          items: [
+            {
+              name: "Series Điểm 7.2",
+              slug: "series-72",
+              imdb: { vote_average: 7.2 },
+            },
+            {
+              name: "Series Điểm 8.8",
+              slug: "series-88",
+              imdb: { vote_average: 8.8 },
+            },
+            {
+              name: "Series Điểm 8.1",
+              slug: "series-81",
+              imdb: { vote_average: 8.1 },
+            },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const topSeries = await getTopImdbMovies("tv", 10);
+    expect(topSeries.length).toBeGreaterThanOrEqual(3);
+    expect(topSeries[0].imdbRating).toBe(8.8);
+    expect(topSeries[1].imdbRating).toBe(8.1);
+    expect(topSeries[2].imdbRating).toBe(7.2);
   });
 });
 

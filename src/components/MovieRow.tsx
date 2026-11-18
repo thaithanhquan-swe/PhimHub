@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { MovieCard } from "@/components/MovieCard";
 import type { Movie } from "@/data/movies";
@@ -11,9 +12,11 @@ const MOVIES_PER_BATCH = 6;
 export function MovieRow({
   title,
   movies,
+  viewAllUrl,
 }: {
   title: string;
   movies: Movie[];
+  viewAllUrl?: string;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -155,6 +158,15 @@ export function MovieRow({
           <span className="h-5 sm:h-6 w-1 rounded-full bg-primary" />
           <h2 className="font-display text-lg font-bold sm:text-2xl text-white tracking-tight">{title}</h2>
         </div>
+        {viewAllUrl && (
+          <Link
+            to={viewAllUrl}
+            className="group inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-white/70 hover:text-primary transition-colors"
+          >
+            <span>Xem tất cả</span>
+            <ChevronRight className="size-4 text-white/40 group-hover:text-primary transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        )}
       </div>
 
       {/* Main Row Container with middle navigation buttons & drag support */}

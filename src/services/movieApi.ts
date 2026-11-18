@@ -20,6 +20,7 @@ export type MovieSection = {
   title: string;
   movies: Movie[];
   slug?: string;
+  viewAllUrl?: string;
 };
 
 export type FilterParams = {
@@ -27,6 +28,7 @@ export type FilterParams = {
   genre?: string;
   country?: string;
   year?: string | number;
+  imdb?: string | number;
   page?: number;
 };
 
@@ -287,6 +289,8 @@ type PhimApiItem = {
     id?: string | null;
     url?: string | null;
     rating?: string | number | null;
+    vote_average?: string | number | null;
+    vote_count?: number | null;
   };
   imdb_rating?: string | number | null;
   trailer_url?: string | null;
@@ -365,6 +369,8 @@ type NguonCMovieItem = {
     id: string | null;
     url: string | null;
     rating?: string | number | null;
+    vote_average?: string | number | null;
+    vote_count?: number | null;
   };
 };
 
@@ -410,9 +416,14 @@ export function mapPhimApiMovie(item: PhimApiItem, cdnDomain = "https://phimimg.
     : item.actor;
   const imdbId = typeof item.imdb === "string" ? item.imdb : item.imdb?.id || undefined;
   const imdbUrl = typeof item.imdb === "object" ? item.imdb?.url || undefined : undefined;
-  const imdbRating = parseImdbRating(
-    item.imdb_rating ?? (typeof item.imdb === "object" ? item.imdb?.rating : undefined),
-  );
+  const rawImdbRating =
+    item.imdb_rating ??
+    (typeof item.imdb === "object"
+      ? (item.imdb?.vote_average && Number(item.imdb.vote_average) > 0
+          ? item.imdb.vote_average
+          : item.imdb?.rating)
+      : undefined);
+  const imdbRating = parseImdbRating(rawImdbRating);
 
   const categories = Array.isArray(item.category)
     ? item.category.map((c) => c.name).filter(Boolean)
@@ -495,7 +506,13 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
   const yearNum = typeof item.year === "string" ? parseInt(item.year, 10) : item.year;
   const quality = item.quality || "HD";
   const language = item.language || "Vietsub";
-  const imdbRating = parseImdbRating(item.imdb?.rating);
+  const rawNguonCRating =
+    item.imdb?.rating ??
+    (item.imdb as { vote_average?: string | number } | undefined)?.vote_average;
+  const imdbRating = parseImdbRating(rawNguonCRating);
+  const imdbId =
+    item.imdb?.id ||
+    (item.imdb?.url ? item.imdb.url.match(/(tt\d{5,12})/)?.[1] : undefined);
 
   const fallbackNguonCSummary =
     [
@@ -528,7 +545,7 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
     totalEpisodes: totalEp,
     director: item.director || undefined,
     casts: item.casts || undefined,
-    imdbId: item.imdb?.id || undefined,
+    imdbId: imdbId || undefined,
     imdbUrl: item.imdb?.url || undefined,
     imdbRating,
   };
@@ -795,6 +812,46 @@ export async function getMovieDetails(slug: string, signal?: AbortSignal): Promi
   return result.data;
 }
 
+export async function getTopImdbMovies(
+  type: "movie" | "tv",
+  count = 14,
+  signal?: AbortSignal,
+): Promise<Movie[]> {
+  const categorySlug = type === "tv" ? "phim-bo" : "phim-le";
+  try {
+    const [page1, page2, page3] = await Promise.all([
+      getMoviesByCategory(categorySlug, 1, signal).catch(() => [] as Movie[]),
+      getMoviesByCategory(categorySlug, 2, signal).catch(() => [] as Movie[]),
+      getMoviesByCategory(categorySlug, 3, signal).catch(() => [] as Movie[]),
+    ]);
+    const all = [...page1, ...page2, ...page3];
+    const seen = new Set<string>();
+    const unique = all.filter((m) => {
+      const key = m.slug || m.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const rated = unique.filter(
+      (m) => m.imdbRating !== undefined && m.imdbRating >= 7.0,
+    );
+
+    if (rated.length >= 6) {
+      return rated
+        .sort((a, b) => (b.imdbRating ?? 0) - (a.imdbRating ?? 0))
+        .slice(0, count);
+    }
+
+    return unique
+      .sort((a, b) => (b.imdbRating ?? 0) - (a.imdbRating ?? 0))
+      .slice(0, count);
+  } catch (error) {
+    console.error(`Failed to fetch top IMDb ${type}:`, error);
+    return [];
+  }
+}
+
 export async function getHomeSections(
   signal?: AbortSignal,
   type?: string | null,
@@ -802,6 +859,7 @@ export async function getHomeSections(
   type SectionConfig = {
     title: string;
     fetcher: () => Promise<Movie[]>;
+    viewAllUrl?: string;
   };
 
   let sectionConfigs: SectionConfig[] = [];
@@ -809,47 +867,67 @@ export async function getHomeSections(
   if (type === "tv" || type === "phim-bo") {
     sectionConfigs = [
       {
+        title: "Top IMDb: Phim bộ đánh giá cao",
+        fetcher: () => getTopImdbMovies("tv", 14, signal),
+        viewAllUrl: "/?type=tv&imdb=7.0",
+      },
+      {
         title: "Phim bộ mới cập nhật",
         fetcher: () => getMoviesByCategory("phim-bo", 1, signal),
+        viewAllUrl: "/?type=tv",
       },
       {
         title: "TV Shows nổi bật",
         fetcher: () => getMoviesByCategory("tv-shows", 1, signal),
+        viewAllUrl: "/?type=tv-shows",
       },
       {
         title: "Phim bộ Trung Quốc",
         fetcher: () => getMoviesByCountry("trung-quoc", 1, signal),
+        viewAllUrl: "/?type=tv&country=trung-quoc",
       },
       {
         title: "Phim bộ Hàn Quốc",
         fetcher: () => getMoviesByCountry("han-quoc", 1, signal),
+        viewAllUrl: "/?type=tv&country=han-quoc",
       },
       {
         title: "Phim bộ Âu Mỹ",
         fetcher: () => getMoviesByCountry("au-my", 1, signal),
+        viewAllUrl: "/?type=tv&country=au-my",
       },
     ];
   } else if (type === "movie" || type === "phim-le") {
     sectionConfigs = [
       {
+        title: "Top IMDb: Phim lẻ đánh giá cao",
+        fetcher: () => getTopImdbMovies("movie", 14, signal),
+        viewAllUrl: "/?type=movie&imdb=7.0",
+      },
+      {
         title: "Phim lẻ mới nhất",
         fetcher: () => getMoviesByCategory("phim-le", 1, signal),
+        viewAllUrl: "/?type=movie",
       },
       {
         title: "Phim hành động kịch tính",
         fetcher: () => getMoviesByGenre("hanh-dong", 1, signal),
+        viewAllUrl: "/?type=movie&genre=hanh-dong",
       },
       {
         title: "Phim kinh dị hấp dẫn",
         fetcher: () => getMoviesByGenre("kinh-di", 1, signal),
+        viewAllUrl: "/?type=movie&genre=kinh-di",
       },
       {
         title: "Khoa học viễn tưởng",
         fetcher: () => getMoviesByGenre("khoa-hoc-vien-tuong", 1, signal),
+        viewAllUrl: "/?type=movie&genre=khoa-hoc-vien-tuong",
       },
       {
         title: "Phim hài hước",
         fetcher: () => getMoviesByGenre("hai-huoc", 1, signal),
+        viewAllUrl: "/?type=movie&genre=hai-huoc",
       },
     ];
   } else if (type === "hoat-hinh") {
@@ -857,14 +935,17 @@ export async function getHomeSections(
       {
         title: "Hoạt hình & Anime tuyển chọn",
         fetcher: () => getMoviesByCategory("hoat-hinh", 1, signal),
+        viewAllUrl: "/?type=hoat-hinh",
       },
       {
         title: "Anime Nhật Bản",
         fetcher: () => getMoviesByCountry("nhat-ban", 1, signal),
+        viewAllUrl: "/?type=hoat-hinh&country=nhat-ban",
       },
       {
         title: "Hoạt hình 3D Trung Quốc",
         fetcher: () => getMoviesByCountry("trung-quoc", 1, signal),
+        viewAllUrl: "/?type=hoat-hinh&country=trung-quoc",
       },
     ];
   } else {
@@ -875,32 +956,47 @@ export async function getHomeSections(
         fetcher: () => getNewUpdatedMovies(1, signal),
       },
       {
+        title: "Top IMDb: Phim lẻ đánh giá cao",
+        fetcher: () => getTopImdbMovies("movie", 14, signal),
+        viewAllUrl: "/?type=movie&imdb=7.0",
+      },
+      {
+        title: "Top IMDb: Phim bộ đánh giá cao",
+        fetcher: () => getTopImdbMovies("tv", 14, signal),
+        viewAllUrl: "/?type=tv&imdb=7.0",
+      },
+      {
         title: "Phim lẻ chọn lọc",
         fetcher: () => getMoviesByCategory("phim-le", 1, signal),
+        viewAllUrl: "/?type=movie",
       },
       {
         title: "Phim bộ đặc sắc",
         fetcher: () => getMoviesByCategory("phim-bo", 1, signal),
+        viewAllUrl: "/?type=tv",
       },
       {
         title: "Hoạt hình & Anime",
         fetcher: () => getMoviesByCategory("hoat-hinh", 1, signal),
+        viewAllUrl: "/?type=hoat-hinh",
       },
       {
         title: "Hành động kịch tính",
         fetcher: () => getMoviesByGenre("hanh-dong", 1, signal),
+        viewAllUrl: "/?genre=hanh-dong",
       },
       {
         title: "Tình cảm lãng mạn",
         fetcher: () => getMoviesByGenre("tinh-cam", 1, signal),
+        viewAllUrl: "/?genre=tinh-cam",
       },
     ];
   }
 
   const results = await Promise.allSettled(
-    sectionConfigs.map(async ({ title, fetcher }) => {
+    sectionConfigs.map(async ({ title, fetcher, viewAllUrl }): Promise<MovieSection> => {
       const movies = await fetcher();
-      return { title, movies };
+      return { title, movies, viewAllUrl };
     }),
   );
 
@@ -919,6 +1015,15 @@ export const FILTER_OPTIONS = {
     { label: "Phim lẻ", value: "movie" },
     { label: "Hoạt hình", value: "hoat-hinh" },
     { label: "TV Shows", value: "tv-shows" },
+  ],
+  imdbRatings: [
+    { label: "Tất cả điểm IMDb", value: "all" },
+    { label: "IMDb 8.5+ (Kiệt tác)", value: "8.5" },
+    { label: "IMDb 8.0+ (Xuất sắc)", value: "8.0" },
+    { label: "IMDb 7.5+ (Rất hay)", value: "7.5" },
+    { label: "IMDb 7.0+ (Hay)", value: "7.0" },
+    { label: "IMDb 6.0+ (Khá)", value: "6.0" },
+    { label: "IMDb 5.0+ trở lên", value: "5.0" },
   ],
   genres: [
     { label: "Tất cả thể loại", value: "all" },
@@ -997,6 +1102,49 @@ export async function getFilteredCatalog(
       }
       if (params.year && params.year !== "all") {
         url.searchParams.set("year", String(params.year));
+      }
+
+      if (params.imdb && params.imdb !== "all") {
+        const minRating = parseFloat(String(params.imdb));
+        url.searchParams.set("page", String(page));
+        const data1 = await fetchJson<PhimApiListResponse>(url.toString(), signal);
+        const items1 = data1.data?.items || data1.items || [];
+
+        let items2: PhimApiItem[] = [];
+        try {
+          const url2 = new URL(url.toString());
+          url2.searchParams.set("page", String(page + 1));
+          const data2 = await fetchJson<PhimApiListResponse>(url2.toString(), signal);
+          items2 = data2.data?.items || data2.items || [];
+        } catch {
+          // Ignore secondary page failures
+        }
+
+        const allItems = [...items1, ...items2];
+        const allMovies = allItems.map((m) =>
+          mapPhimApiMovie(m, data1.data?.APP_DOMAIN_CDN_IMAGE),
+        );
+
+        const seen = new Set<string>();
+        const filtered = allMovies.filter((m) => {
+          const key = m.slug || m.id;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return m.imdbRating !== undefined && m.imdbRating >= minRating;
+        });
+
+        filtered.sort((a, b) => (b.imdbRating ?? 0) - (a.imdbRating ?? 0));
+
+        const pag = data1.data?.params?.pagination || data1.pagination;
+        const totalEstimatedPages = Math.max(1, Math.ceil((pag?.totalPages || 1) / 2));
+
+        return {
+          movies: filtered,
+          currentPage: page,
+          totalPage: totalEstimatedPages,
+          totalItems: pag?.totalItems ? Math.round(pag.totalItems * 0.4) : filtered.length,
+          provider: "phimapi" as ApiProviderId,
+        };
       }
 
       const data = await fetchJson<PhimApiListResponse>(url.toString(), signal);
@@ -1097,7 +1245,18 @@ export async function getFilteredCatalog(
           .map(({ movie }) => movie);
       }
 
-      const isMultiFiltered = [hasGenre, hasCountry, hasYear, hasType].filter(Boolean).length > 1;
+      const hasImdb = Boolean(params.imdb && params.imdb !== "all");
+      if (hasImdb) {
+        const minRating = parseFloat(String(params.imdb));
+        if (!isNaN(minRating)) {
+          movies = movies.filter(
+            (m) => m.imdbRating !== undefined && m.imdbRating >= minRating,
+          );
+          movies.sort((a, b) => (b.imdbRating ?? 0) - (a.imdbRating ?? 0));
+        }
+      }
+
+      const isMultiFiltered = [hasGenre, hasCountry, hasYear, hasType, hasImdb].filter(Boolean).length > 1;
       const totalItems = isMultiFiltered
         ? movies.length
         : data.paginate?.total_items || movies.length;

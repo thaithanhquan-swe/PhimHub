@@ -12,7 +12,8 @@ interface MobileNavDrawerProps {
   isItemActive: (id: string) => boolean;
   currentGenre: string | null;
   currentCountry: string | null;
-  onFilterChange: (key: "genre" | "country", val: string) => void;
+  currentImdb?: string | null;
+  onFilterChange: (key: "genre" | "country" | "year" | "imdb", val: string) => void;
   onInstall?: () => void;
 }
 
@@ -22,6 +23,7 @@ export function MobileNavDrawer({
   isItemActive,
   currentGenre,
   currentCountry,
+  currentImdb,
   onFilterChange,
   onInstall,
 }: MobileNavDrawerProps) {
@@ -124,6 +126,36 @@ export function MobileNavDrawer({
                 )}
               >
                 {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* IMDb rating shortcuts */}
+        <div className="mb-6 border-t border-white/10 pt-4">
+          <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-[#f5c518] mb-2 flex items-center gap-1.5">
+            <span className="rounded bg-[#f5c518] px-1 py-0.2 text-[9px] font-black text-black leading-none">
+              IMDb
+            </span>
+            <span>Lọc theo điểm IMDb</span>
+          </p>
+          <div className="grid grid-cols-2 gap-1 px-1">
+            {FILTER_OPTIONS.imdbRatings.slice(1, 7).map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => {
+                  onFilterChange("imdb", r.value);
+                  onClose();
+                }}
+                className={cn(
+                  "rounded-lg px-2.5 py-1.5 text-xs text-left font-medium transition-colors line-clamp-1",
+                  currentImdb === r.value
+                    ? "bg-amber-400/20 text-amber-300 font-bold border border-amber-400/40"
+                    : "text-white/70 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                {r.label}
               </button>
             ))}
           </div>

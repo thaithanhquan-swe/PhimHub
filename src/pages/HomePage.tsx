@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
+  Star,
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -42,6 +43,7 @@ export function HomePage() {
   const genreParam = searchParams.get("genre") || "all";
   const countryParam = searchParams.get("country") || "all";
   const yearParam = searchParams.get("year") || "all";
+  const imdbParam = searchParams.get("imdb") || "all";
   const pageParam = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const savedOnly = searchParams.get("list") === "saved";
 
@@ -50,7 +52,8 @@ export function HomePage() {
     typeParam ||
       (genreParam && genreParam !== "all") ||
       (countryParam && countryParam !== "all") ||
-      (yearParam && yearParam !== "all"),
+      (yearParam && yearParam !== "all") ||
+      (imdbParam && imdbParam !== "all"),
   );
 
   const currentProvider = getActiveProvider();
@@ -64,6 +67,7 @@ export function HomePage() {
     genre: genreParam,
     country: countryParam,
     year: yearParam,
+    imdb: imdbParam,
     page: pageParam,
   };
   const catalogQuery = useQuery({
@@ -74,6 +78,7 @@ export function HomePage() {
       filterParams.genre,
       filterParams.country,
       filterParams.year,
+      filterParams.imdb,
       filterParams.page,
     ],
     queryFn: ({ signal }) => getFilteredCatalog(filterParams, signal),
@@ -113,6 +118,10 @@ export function HomePage() {
       if (newValues.year === "all") next.delete("year");
       else next.set("year", String(newValues.year));
     }
+    if (newValues.imdb !== undefined) {
+      if (newValues.imdb === "all") next.delete("imdb");
+      else next.set("imdb", String(newValues.imdb));
+    }
     next.delete("page"); // Reset to page 1 on filter change
     setSearchParams(next);
   }
@@ -130,14 +139,37 @@ export function HomePage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const categoryTitle =
-    typeParam === "tv"
-      ? "Kho Phim Bộ Trọn Bộ & Mới Cập Nhật"
-      : typeParam === "movie"
-        ? "Kho Phim Lẻ Chiếu Rạp Chọn Lọc"
-        : typeParam === "hoat-hinh"
-          ? "Kho Hoạt Hình & Anime Tuyển Chọn"
-          : "Kho Phim Chọn Lọc";
+  const categoryTitle = useMemo(() => {
+    const isTopImdb = imdbParam && imdbParam !== "all";
+    const imdbSuffix = isTopImdb ? ` (Điểm IMDb ${imdbParam}+)` : "";
+
+    if (typeParam === "tv") {
+      return isTopImdb
+        ? `Phim Bộ Đánh Giá Cao Trên IMDb${imdbSuffix}`
+        : "Kho Phim Bộ Trọn Bộ & Mới Cập Nhật";
+    }
+    if (typeParam === "movie") {
+      return isTopImdb
+        ? `Phim Lẻ Đánh Giá Cao Trên IMDb${imdbSuffix}`
+        : "Kho Phim Lẻ Chiếu Rạp Chọn Lọc";
+    }
+    if (typeParam === "hoat-hinh") {
+      return isTopImdb
+        ? `Kho Hoạt Hình & Anime Đánh Giá Cao${imdbSuffix}`
+        : "Kho Hoạt Hình & Anime Tuyển Chọn";
+    }
+    if (isTopImdb) {
+      return `Phim Đánh Giá Cao Trên IMDb${imdbSuffix}`;
+    }
+    return "Kho Phim Chọn Lọc";
+  }, [typeParam, imdbParam]);
+
+  const categoryDescription = useMemo(() => {
+    if (imdbParam && imdbParam !== "all") {
+      return "Tuyển tập những siêu phẩm điện ảnh & truyền hình được đánh giá cao nhất trên IMDb.";
+    }
+    return "Khám phá và lọc phim theo thể loại, quốc gia, năm phát hành, điểm IMDb.";
+  }, [imdbParam]);
 
   useEffect(() => {
     if (isFilterMode) {
@@ -230,21 +262,26 @@ export function HomePage() {
         <section className="relative z-20 pt-24 sm:pt-28 px-4 sm:px-[4.5%]">
           <div className="mb-4">
             <h1 className="font-display text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-              <Film className="size-6 text-primary" />
+              {imdbParam && imdbParam !== "all" ? (
+                <Star className="size-6 text-[#f5c518] fill-[#f5c518]" />
+              ) : (
+                <Film className="size-6 text-primary" />
+              )}
               <span>{categoryTitle}</span>
             </h1>
             <p className="mt-1 text-xs text-white/60">
-              Khám phá và lọc phim theo thể loại, quốc gia, năm phát hành.
+              {categoryDescription}
             </p>
           </div>
 
-          {/* Minimalist Filter Bar: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
+          {/* Minimalist Filter Bar: Thể loại ⌵   Quốc gia ⌵   Năm ⌵   Điểm IMDb ⌵ */}
           <MovieFilterBar
             values={{
               type: typeParam || "all",
               genre: genreParam,
               country: countryParam,
               year: yearParam,
+              imdb: imdbParam,
               page: pageParam,
             }}
             onChange={handleFilterChange}
@@ -351,6 +388,7 @@ export function HomePage() {
               key={section.title}
               title={section.title}
               movies={section.movies}
+              viewAllUrl={section.viewAllUrl}
             />
           ))}
         </div>

@@ -17,7 +17,8 @@ export function MovieFilterBar({
   const hasActiveFilters =
     (values.genre && values.genre !== "all") ||
     (values.country && values.country !== "all") ||
-    (values.year && values.year !== "all");
+    (values.year && values.year !== "all") ||
+    (values.imdb && values.imdb !== "all");
 
   const currentGenreLabel =
     FILTER_OPTIONS.genres.find((g) => g.value === (values.genre || "all"))?.label || "Thể loại";
@@ -25,6 +26,8 @@ export function MovieFilterBar({
     FILTER_OPTIONS.countries.find((c) => c.value === (values.country || "all"))?.label || "Quốc gia";
   const currentYearLabel =
     FILTER_OPTIONS.years.find((y) => String(y.value) === String(values.year || "all"))?.label || "Năm";
+  const currentImdbLabel =
+    FILTER_OPTIONS.imdbRatings.find((r) => String(r.value) === String(values.imdb || "all"))?.label || "Điểm IMDb";
 
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
@@ -52,6 +55,14 @@ export function MovieFilterBar({
           options={FILTER_OPTIONS.years}
           onChange={(val) => onChange({ year: val, page: 1 })}
           columns={3}
+        />
+
+        <DropdownFilter
+          label="Điểm IMDb"
+          value={values.imdb ? String(values.imdb) : "all"}
+          options={FILTER_OPTIONS.imdbRatings}
+          onChange={(val) => onChange({ imdb: val, page: 1 })}
+          columns={2}
         />
       </div>
 
@@ -111,6 +122,23 @@ export function MovieFilterBar({
                 type="button"
                 onClick={() => onChange({ year: "all", page: 1 })}
                 className="hover:text-primary transition-colors"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+
+          {values.imdb && values.imdb !== "all" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 border border-amber-400/40 px-2.5 py-0.5 text-xs text-amber-300">
+              <span className="rounded bg-[#f5c518] px-1 py-0.5 text-[9px] font-black text-black leading-none shadow-xs">
+                IMDb
+              </span>
+              <span>{currentImdbLabel}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ imdb: "all", page: 1 })}
+                className="hover:text-amber-100 transition-colors"
+                aria-label="Xóa bộ lọc điểm IMDb"
               >
                 <X className="size-3" />
               </button>
