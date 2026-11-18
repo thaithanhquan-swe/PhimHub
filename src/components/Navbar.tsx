@@ -122,7 +122,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Navigation Links */}
-        <nav className="hidden items-center gap-4 lg:flex xl:gap-6" aria-label="Điều hướng chính">
+        <nav className="hidden items-center gap-3 lg:flex xl:gap-5 shrink-0" aria-label="Điều hướng chính">
           {PRIMARY_NAV_ITEMS.map(({ id, label, to }) => {
             const active = isItemActive(id);
             return (
@@ -141,8 +141,8 @@ export function Navbar() {
             );
           })}
 
-          {/* Minimalist Dropdowns: Thể loại ⌵   Quốc gia ⌵   Năm ⌵ */}
-          <div className="flex items-center gap-1 xl:gap-2 border-l border-white/10 pl-3 xl:pl-4">
+          {/* Minimalist Dropdowns (Shown on very wide 2xl displays so search bar has ample room to expand) */}
+          <div className="hidden 2xl:flex items-center gap-1 xl:gap-2 border-l border-white/10 pl-3 xl:pl-4 shrink-0">
             <DropdownFilter
               label="Thể loại"
               value={currentGenre || "all"}
@@ -162,14 +162,7 @@ export function Navbar() {
               value={currentYear || "all"}
               options={FILTER_OPTIONS.years}
               onChange={(y) => handleNavbarFilter("year", y)}
-              columns={3}
-            />
-            <DropdownFilter
-              label="Điểm IMDb"
-              value={currentImdb || "all"}
-              options={FILTER_OPTIONS.imdbRatings}
-              onChange={(i) => handleNavbarFilter("imdb", i)}
-              columns={2}
+              columns={1}
             />
           </div>
         </nav>

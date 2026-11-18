@@ -13,14 +13,14 @@ export function DropdownFilter({
   value,
   options,
   onChange,
-  columns = 3,
+  columns = 1,
   align = "left",
 }: {
   label: string;
   value?: string;
   options: Option[];
   onChange: (val: string) => void;
-  columns?: 2 | 3 | 4;
+  columns?: 1 | 2 | 3 | 4;
   align?: "left" | "right";
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,16 +52,16 @@ export function DropdownFilter({
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className={cn(
-          "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-sm sm:text-[15px] font-medium transition-all select-none",
+          "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-sm sm:text-[15px] font-medium transition-all select-none whitespace-nowrap",
           isCustomActive
             ? "text-primary font-bold bg-primary/10 border border-primary/30"
             : "text-white/80 hover:text-white hover:bg-white/10",
         )}
       >
-        <span>{isCustomActive ? selectedOption?.label || label : label}</span>
+        <span className="truncate max-w-[170px]">{isCustomActive ? selectedOption?.label || label : label}</span>
         <ChevronDown
           className={cn(
-            "size-3.5 sm:size-4 text-white/60 transition-transform duration-200",
+            "size-3.5 sm:size-4 text-white/60 transition-transform duration-200 shrink-0",
             isOpen && "rotate-180 text-white",
           )}
         />
@@ -77,18 +77,20 @@ export function DropdownFilter({
 
           <div
             className={cn(
-              "z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[65vh] overflow-y-auto",
+              "z-50 rounded-2xl border border-white/15 bg-[#141414]/98 backdrop-blur-2xl p-2.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[65vh] overflow-y-auto",
               "max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:w-auto max-sm:top-28 sm:absolute sm:top-full sm:mt-2",
               align === "right" ? "sm:right-0" : "sm:left-0",
               columns === 4
-                ? "sm:w-[480px] md:w-[560px] grid grid-cols-2 sm:grid-cols-4 gap-1.5"
+                ? "w-[360px] sm:w-[540px] grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-3"
                 : columns === 3
-                  ? "sm:w-[390px] grid grid-cols-2 sm:grid-cols-3 gap-1.5"
-                  : "grid grid-cols-2 gap-1.5",
+                  ? "w-[320px] sm:w-[420px] grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5"
+                  : columns === 2
+                    ? "w-[280px] sm:w-[320px] grid grid-cols-2 gap-1.5 p-2"
+                    : "w-[240px] sm:w-[270px] flex flex-col gap-1 p-1.5",
             )}
           >
             {/* Mobile Header */}
-            <div className="col-span-2 sm:hidden flex items-center justify-between pb-2 mb-1 border-b border-white/10 text-xs font-bold text-white/70">
+            <div className="sm:hidden flex items-center justify-between pb-2 mb-1 border-b border-white/10 text-xs font-bold text-white/70">
               <span>Chọn {label}</span>
               <button
                 type="button"
@@ -111,14 +113,14 @@ export function DropdownFilter({
                     setIsOpen(false);
                   }}
                   className={cn(
-                    "flex items-center justify-between rounded-lg px-3 py-2 min-h-[38px] text-xs sm:text-sm font-medium transition-all text-left active:scale-95",
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 min-h-[38px] text-xs sm:text-sm font-medium transition-all text-left active:scale-[0.98]",
                     isSelected
                       ? "bg-primary text-white font-bold shadow-md shadow-primary/30"
                       : "text-white/75 hover:bg-white/15 hover:text-white",
                   )}
                 >
-                  <span className="line-clamp-1">{opt.label}</span>
-                  {isSelected && <Check className="size-3.5 shrink-0 ml-1.5" />}
+                  <span className="truncate whitespace-nowrap">{opt.label}</span>
+                  {isSelected && <Check className="size-4 shrink-0 text-white ml-2" />}
                 </button>
               );
             })}

@@ -54,7 +54,7 @@ export function MovieFilterBar({
           value={values.year ? String(values.year) : "all"}
           options={FILTER_OPTIONS.years}
           onChange={(val) => onChange({ year: val, page: 1 })}
-          columns={3}
+          columns={1}
         />
 
         <DropdownFilter
@@ -62,7 +62,7 @@ export function MovieFilterBar({
           value={values.imdb ? String(values.imdb) : "all"}
           options={FILTER_OPTIONS.imdbRatings}
           onChange={(val) => onChange({ imdb: val, page: 1 })}
-          columns={2}
+          columns={1}
         />
       </div>
 
