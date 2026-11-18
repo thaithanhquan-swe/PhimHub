@@ -63,6 +63,7 @@ export function MovieFilterBar({
           options={FILTER_OPTIONS.imdbRatings}
           onChange={(val) => onChange({ imdb: val, page: 1 })}
           columns={1}
+          theme="imdb"
         />
       </div>
 

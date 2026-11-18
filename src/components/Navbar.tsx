@@ -2,13 +2,11 @@ import { Download, Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { DropdownFilter } from "@/components/DropdownFilter";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { PwaInstallModal } from "@/components/PwaInstallModal";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { cn } from "@/lib/utils";
-import { FILTER_OPTIONS } from "@/services/movieApi";
 import {
   MobileBottomNav,
   MobileNavDrawer,
@@ -140,35 +138,10 @@ export function Navbar() {
               </Link>
             );
           })}
-
-          {/* Minimalist Dropdowns (Shown on very wide 2xl displays so search bar has ample room to expand) */}
-          <div className="hidden 2xl:flex items-center gap-1 xl:gap-2 border-l border-white/10 pl-3 xl:pl-4 shrink-0">
-            <DropdownFilter
-              label="Thể loại"
-              value={currentGenre || "all"}
-              options={FILTER_OPTIONS.genres}
-              onChange={(g) => handleNavbarFilter("genre", g)}
-              columns={4}
-            />
-            <DropdownFilter
-              label="Quốc gia"
-              value={currentCountry || "all"}
-              options={FILTER_OPTIONS.countries}
-              onChange={(c) => handleNavbarFilter("country", c)}
-              columns={3}
-            />
-            <DropdownFilter
-              label="Năm"
-              value={currentYear || "all"}
-              options={FILTER_OPTIONS.years}
-              onChange={(y) => handleNavbarFilter("year", y)}
-              columns={1}
-            />
-          </div>
         </nav>
 
         {/* Responsive Search Bar + Provider Status Badge + PWA Download */}
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[240px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[240px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end min-w-0">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
 
           {/* PWA Download / Install App Button */}

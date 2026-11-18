@@ -1,4 +1,4 @@
-import { Download, X } from "lucide-react";
+import { Download, Star, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
@@ -149,13 +149,14 @@ export function MobileNavDrawer({
                   onClose();
                 }}
                 className={cn(
-                  "rounded-lg px-2.5 py-1.5 text-xs text-left font-medium transition-colors line-clamp-1",
+                  "rounded-lg px-2.5 py-1.5 text-xs text-left font-medium transition-colors flex items-center gap-1.5",
                   currentImdb === r.value
                     ? "bg-amber-400/20 text-amber-300 font-bold border border-amber-400/40"
                     : "text-white/70 hover:bg-white/10 hover:text-white",
                 )}
               >
-                {r.label}
+                <Star className="size-3 fill-[#f5c518] text-[#f5c518] shrink-0" />
+                <span>Từ {r.value} điểm</span>
               </button>
             ))}
           </div>

@@ -1018,12 +1018,12 @@ export const FILTER_OPTIONS = {
   ],
   imdbRatings: [
     { label: "Tất cả điểm IMDb", value: "all" },
-    { label: "IMDb 8.5+ (Kiệt tác)", value: "8.5" },
-    { label: "IMDb 8.0+ (Xuất sắc)", value: "8.0" },
-    { label: "IMDb 7.5+ (Rất hay)", value: "7.5" },
-    { label: "IMDb 7.0+ (Hay)", value: "7.0" },
-    { label: "IMDb 6.0+ (Khá)", value: "6.0" },
-    { label: "IMDb 5.0+ trở lên", value: "5.0" },
+    { label: "Từ 8.5 điểm trở lên", value: "8.5" },
+    { label: "Từ 8.0 điểm trở lên", value: "8.0" },
+    { label: "Từ 7.5 điểm trở lên", value: "7.5" },
+    { label: "Từ 7.0 điểm trở lên", value: "7.0" },
+    { label: "Từ 6.0 điểm trở lên", value: "6.0" },
+    { label: "Từ 5.0 điểm trở lên", value: "5.0" },
   ],
   genres: [
     { label: "Tất cả thể loại", value: "all" },
