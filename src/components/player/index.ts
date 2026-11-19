@@ -9,3 +9,4 @@ export * from "./PlayerSettingsMenu";
 export * from "./TimelineScrubber";
 export * from "./VolumeControl";
 export * from "./PlayerBottomControls";
+export * from "./SkipAdButton";

@@ -1,7 +1,7 @@
-import { Check, ChevronRight, Gauge, Scaling, Volume2 } from "lucide-react";
+import { Check, ChevronRight, Gauge, Scaling, Volume2, Zap } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
-import { AUDIO_BOOST_LEVELS, PLAYBACK_SPEEDS } from "./constants";
+import { AD_SKIP_OPTIONS, AUDIO_BOOST_LEVELS, PLAYBACK_SPEEDS } from "./constants";
 import type { QualityOption, SettingsTab } from "./types";
 
 interface PlayerSettingsMenuProps {
@@ -21,6 +21,8 @@ interface PlayerSettingsMenuProps {
   preferM3U8: boolean;
   embedUrl?: string;
   onSwitchToEmbed?: () => void;
+  autoSkipAdSeconds?: number;
+  onSetAutoSkipAd?: (seconds: number) => void;
 }
 
 export function PlayerSettingsMenu({
@@ -40,6 +42,8 @@ export function PlayerSettingsMenu({
   preferM3U8,
   embedUrl,
   onSwitchToEmbed,
+  autoSkipAdSeconds = 85,
+  onSetAutoSkipAd,
 }: PlayerSettingsMenuProps) {
   if (!isOpen) return null;
 
@@ -125,6 +129,26 @@ export function PlayerSettingsMenu({
               {aspectRatio === "cover" ? "Phóng to (Cover)" : "Mặc định (16:9)"}
             </span>
           </button>
+
+          {/* Auto-Skip Ad item */}
+          {onSetAutoSkipAd && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("adSkip")}
+              className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Zap className="size-4 text-amber-400" />
+                <span>Bỏ qua quảng cáo</span>
+              </span>
+              <span className="flex items-center gap-1 text-white/60">
+                <span className="text-amber-300 font-semibold">
+                  {autoSkipAdSeconds === 0 ? "Tắt" : `${autoSkipAdSeconds}s`}
+                </span>
+                <ChevronRight className="size-3.5" />
+              </span>
+            </button>
+          )}
 
           {/* Switch to Embed Fallback if available */}
           {embedUrl && onSwitchToEmbed && (
@@ -242,6 +266,48 @@ export function PlayerSettingsMenu({
                   </span>
                 </div>
                 {isSelected && <Check className="size-3.5 stroke-[2.5]" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Settings Ad Skip Subtab */}
+      {activeTab === "adSkip" && onSetAutoSkipAd && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("main")}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white/70 hover:text-white border-b border-white/10 mb-1"
+          >
+            <ChevronRight className="size-3.5 rotate-180" />
+            <span>Bỏ qua quảng cáo</span>
+          </button>
+          <p className="px-3 pb-1.5 pt-0.5 text-[11px] leading-relaxed text-white/50">
+            Tự động tua qua quảng cáo nhà cái hoặc intro ở đầu phim.
+          </p>
+          {AD_SKIP_OPTIONS.map(({ val, label, desc }) => {
+            const isSelected = autoSkipAdSeconds === val;
+            return (
+              <button
+                key={val}
+                type="button"
+                onClick={() => {
+                  onSetAutoSkipAd(val);
+                  setActiveTab("main");
+                }}
+                className={cn(
+                  "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-colors text-left",
+                  isSelected
+                    ? "bg-amber-500/20 text-amber-300 font-bold"
+                    : "hover:bg-white/10 text-white/80",
+                )}
+              >
+                <div className="flex flex-col min-w-0 pr-2">
+                  <span className="font-semibold">{label}</span>
+                  <span className="text-[10px] text-white/50 font-normal truncate">{desc}</span>
+                </div>
+                {isSelected && <Check className="size-3.5 stroke-[2.5] text-amber-400 shrink-0" />}
               </button>
             );
           })}

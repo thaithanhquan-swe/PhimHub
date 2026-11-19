@@ -9,6 +9,7 @@ import {
   RotateCw,
   Settings,
   SkipForward,
+  Zap,
 } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,9 @@ interface PlayerBottomControlsProps {
   onLockScreen: () => void;
   onToggleOrientation: () => void;
   onNextEpisode?: () => void;
+  onSkipAd?: (seconds?: number) => void;
+  autoSkipAdSeconds?: number;
+  onSetAutoSkipAd?: (seconds: number) => void;
   onTimelineClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   onTimelineTouch: (e: React.TouchEvent<HTMLDivElement>) => void;
   onTimelineHover: (e: React.MouseEvent<HTMLDivElement>) => void;
@@ -108,6 +112,9 @@ export function PlayerBottomControls({
   onLockScreen,
   onToggleOrientation,
   onNextEpisode,
+  onSkipAd,
+  autoSkipAdSeconds = 85,
+  onSetAutoSkipAd,
   onTimelineClick,
   onTimelineTouch,
   onTimelineHover,
@@ -197,8 +204,22 @@ export function PlayerBottomControls({
           </div>
         </div>
 
-        {/* Right Controls: Next Episode, Settings, PiP, Lock, Fullscreen */}
+        {/* Right Controls: Skip Ad, Next Episode, Settings, PiP, Lock, Fullscreen */}
         <div className="flex items-center gap-0.5 sm:gap-2">
+          {/* Quick Skip Ad Button */}
+          {onSkipAd && (
+            <button
+              type="button"
+              onClick={() => onSkipAd(autoSkipAdSeconds > 0 ? autoSkipAdSeconds : 85)}
+              className="flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-1 sm:px-2.5 sm:py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/25 hover:text-amber-200 transition-all active:scale-95 shadow-sm"
+              title={`Bỏ qua quảng cáo / Intro (+${autoSkipAdSeconds > 0 ? autoSkipAdSeconds : 85}s) - Phím tắt [S]`}
+            >
+              <Zap className="size-3.5 fill-current text-amber-400 shrink-0" />
+              <span className="hidden min-[480px]:inline">Bỏ qua QC</span>
+              <span className="text-[10px] opacity-80">(+{autoSkipAdSeconds > 0 ? autoSkipAdSeconds : 85}s)</span>
+            </button>
+          )}
+
           {/* Next Episode Button */}
           {hasNextEpisode && onNextEpisode && (
             <button
@@ -243,6 +264,8 @@ export function PlayerBottomControls({
               preferM3U8={preferM3U8}
               embedUrl={embedUrl}
               onSwitchToEmbed={onSwitchToEmbed}
+              autoSkipAdSeconds={autoSkipAdSeconds}
+              onSetAutoSkipAd={onSetAutoSkipAd}
             />
           </div>
 
