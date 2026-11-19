@@ -33,20 +33,39 @@ export function isAdSegmentUrl(url: string): boolean {
   }
 
   // 3. Ad-specific filenames, chunks, and segment naming patterns (including Vietnamese ad naming)
+  // Requires word boundaries or delimiters (_ or -) for short abbreviations (ad, ads, qc) to prevent false positives
+  // on random base62 movie segment hashes (e.g. Ad2pPDzk.ts, qC9gJph3.ts).
   if (
-    /(?:^|\/)(?:segment_?\d+|ads?|adv|advert|banner|quang[-_]?cao|qc|popunder|midroll|preroll|postroll|sponsor|promo|interstitial|khuyen[-_]?mai)[-_.\d]/i.test(
+    /(?:^|\/)(?:segment_?\d+|quang[-_]?cao|khuyen[-_]?mai|banner|popunder|midroll|preroll|postroll|sponsor|promo|interstitial)[-_.\d]/i.test(
       trimmed,
     )
   ) {
+    return true;
+  }
+  if (/(?:^|\/)(?:ad|ads|adv|advert|qc)[-_]/i.test(trimmed)) {
     return true;
   }
   if (/^segment_?\d+\.ts$/i.test(trimmed)) {
     return true;
   }
 
-  // 4. Known ad networks, gambling platforms, and betting brands (checked everywhere in URL/path/filename)
+  // 4. Known ad networks, gambling platforms, and betting brands
+  // For absolute URLs (http://, https://, //), match domain name or path
+  if (/^(?:https?:)?\/\//i.test(trimmed)) {
+    if (
+      /(?:^|\/\/)(?:[a-z0-9-]+\.)*(?:1999\.?ai|okvip|88bet|fb88|kubet|w88|fun88|bk8|shbet|new88|jun88|hi88|789bet|f8bet|ok9|sin88|may88|debet|red88|five88|zbet|oxbet|taixiu|nohu|banca|gamebai|casino|betting|adserver|adskeeper|adsterra|propellerads|trafficjunky|exoclick|doubleclick|googleads|googlesyndication|adnxs|adsystem)(?:[\/:\.]|$)/i.test(
+        trimmed,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  // For relative filenames/paths, require delimiters (^, /, _, -, .) around brand names
+  // to avoid matching random movie hashes containing substrings like 'ok9', 'w88', 'bk8', 'zbet'
+  // (e.g. ApW4Ok9f.ts, YW88ZjBZ.ts, deOmBK8l.ts, zbETu8yp.ts)
   if (
-    /(?:1999\.?ai|okvip|88bet|fb88|kubet|w88|fun88|bk8|shbet|new88|jun88|hi88|789bet|f8bet|ok9|sin88|may88|debet|red88|five88|zbet|oxbet|taixiu|nohu|banca|gamebai|casino|betting|adserver|adskeeper|adsterra|propellerads|trafficjunky|exoclick|doubleclick|googleads|googlesyndication|adnxs|adsystem)/i.test(
+    /(?:^|[\/_\.-])(?:1999\.?ai|okvip|88bet|fb88|kubet(?:88)?|w88|fun88|bk8|shbet|new88|jun88|hi88|789bet|f8bet|ok9|sin88|may88|debet|red88|five88|zbet|oxbet|taixiu|nohu|banca|gamebai|casino|betting|adserver|adskeeper|adsterra|propellerads|trafficjunky|exoclick|doubleclick|googleads|googlesyndication|adnxs|adsystem)(?:[\/_\.-]|$)/i.test(
       trimmed,
     )
   ) {

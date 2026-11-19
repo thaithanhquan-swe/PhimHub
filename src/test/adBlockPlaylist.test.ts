@@ -41,6 +41,19 @@ describe("AdBlock Playlist Filter", () => {
     expect(isAdSegmentUrl("jhUmv7Vp.ts")).toBe(false);
     expect(isAdSegmentUrl("fAFxvIv9.ts")).toBe(false);
     expect(isAdSegmentUrl("JCev9XYc.ts")).toBe(false);
+
+    // Random base62 movie segment hashes containing brand or ad abbreviations must NOT be flagged as ads
+    expect(isAdSegmentUrl("ApW4Ok9f.ts")).toBe(false); // contains 'ok9'
+    expect(isAdSegmentUrl("YW88ZjBZ.ts")).toBe(false); // contains 'w88'
+    expect(isAdSegmentUrl("deOmBK8l.ts")).toBe(false); // contains 'bk8'
+    expect(isAdSegmentUrl("zbETu8yp.ts")).toBe(false); // contains 'zbet'
+    expect(isAdSegmentUrl("qC9gJph3.ts")).toBe(false); // starts with 'qc9'
+    expect(isAdSegmentUrl("Ad2pPDzk.ts")).toBe(false); // starts with 'ad2'
+    expect(isAdSegmentUrl("MNIok9qt.ts")).toBe(false); // contains 'ok9'
+    expect(isAdSegmentUrl("BK8QTw0F.ts")).toBe(false); // contains 'bk8'
+    expect(isAdSegmentUrl("GYxBok9C.ts")).toBe(false); // contains 'ok9'
+    expect(isAdSegmentUrl("Qc5vaQNv.ts")).toBe(false); // starts with 'qc5'
+    expect(isAdSegmentUrl("aD4zbLZp.ts")).toBe(false); // starts with 'ad4'
   });
 
   it("removes preroll ads without leaving orphan discontinuities", () => {

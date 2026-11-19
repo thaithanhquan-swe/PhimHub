@@ -212,17 +212,6 @@ export function useHlsPlayer({
       let fatalErrorCount = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) {
-          // Handle non-fatal buffer gaps or stalls caused by removed ad segments
-          if (
-            data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
-            data.details === Hls.ErrorDetails.BUFFER_SEEK_OVER_HOLE ||
-            data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL
-          ) {
-            const v = videoRef.current;
-            if (v && !v.paused && v.readyState >= 2) {
-              v.currentTime += 0.2;
-            }
-          }
           return;
         }
 
