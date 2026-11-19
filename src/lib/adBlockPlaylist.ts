@@ -3,6 +3,33 @@ import Hls, {
   type LoaderConfiguration,
   type PlaylistLoaderContext,
 } from "hls.js";
+import { getOfflineDownload, getOfflineSegment } from "@/services/offlineStorage";
+
+function makeHlsLoaderStats(loadedBytes: number = 0) {
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  return {
+    aborted: false,
+    loaded: loadedBytes,
+    retry: 0,
+    total: loadedBytes,
+    chunkCount: 1,
+    bwEstimate: 50000000,
+    loading: {
+      start: now - 10,
+      first: now - 5,
+      end: now,
+    },
+    parsing: {
+      start: now,
+      end: now,
+    },
+    buffering: {
+      start: now,
+      first: now,
+      end: now,
+    },
+  };
+}
 
 /**
  * Checks if a given media segment URL is an injected advertisement.
@@ -197,107 +224,117 @@ export class PlaylistAdBlockLoader extends (Hls.DefaultConfig.loader as any) {
 
     // Handle offline master / media playlist requests
     if (context.url && context.url.startsWith("offline://")) {
-      const downloadId = context.url.replace("offline://", "");
-      import("@/services/offlineStorage").then(({ getOfflineDownload }) => {
-        if (this._aborted) return;
-        const now = performance.now();
-        const errStats = {
-          trequest: now,
-          tfirst: now,
-          tload: now,
-          loaded: 0,
-          total: 0,
-          retry: 0,
-        };
+      const cleanUrl = context.url.split("?")[0].split("#")[0];
+      const downloadId = cleanUrl.replace(/^offline:\/\//, "").replace(/\/+$/, "");
 
-        getOfflineDownload(downloadId)
-          .then((item) => {
-            if (this._aborted) return;
-            if (!item || !item.playlistText) {
-              callbacks.onError(
-                { code: 404, text: "Không tìm thấy dữ liệu phát offline" },
-                context,
-                null as any,
-                errStats as any,
-              );
-              return;
-            }
-            const data = item.playlistText;
-            const stats = {
-              trequest: now,
-              tfirst: now,
-              tload: now,
-              loaded: data.length,
-              total: data.length,
-              retry: 0,
-            };
-            callbacks.onSuccess({ url: context.url, data }, stats as any, context, null as any);
-          })
-          .catch((err) => {
-            if (this._aborted) return;
+      getOfflineDownload(downloadId)
+        .then((item) => {
+          if (this._aborted) return;
+          if (!item || !item.playlistText) {
+            const errStats = makeHlsLoaderStats(0);
             callbacks.onError(
-              { code: 500, text: err?.message || "Lỗi tải playlist offline" },
+              { code: 404, text: "Không tìm thấy dữ liệu phát offline" },
               context,
               null as any,
               errStats as any,
             );
-          });
-      });
+            return;
+          }
+
+          let data = item.playlistText;
+          // Ensure valid VOD tags if not present
+          if (!data.includes("#EXT-X-PLAYLIST-TYPE")) {
+            data = data.replace("#EXTM3U", "#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD");
+          }
+          if (!data.includes("#EXT-X-ENDLIST")) {
+            data += "\n#EXT-X-ENDLIST";
+          }
+
+          const byteLength = data.length;
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          const stats = (this.stats && typeof this.stats === "object") ? this.stats : makeHlsLoaderStats(byteLength);
+          if (!stats.loading) {
+            stats.loading = { start: now - 10, first: now - 5, end: now };
+          }
+          stats.loading.start = stats.loading.start || (now - 10);
+          stats.loading.first = stats.loading.first || (now - 5);
+          stats.loading.end = now;
+          stats.loaded = byteLength;
+          stats.total = byteLength;
+          stats.bwEstimate = 50000000;
+
+          callbacks.onSuccess({ url: context.url, data }, stats as any, context, null as any);
+        })
+        .catch((err) => {
+          if (this._aborted) return;
+          const errStats = makeHlsLoaderStats(0);
+          callbacks.onError(
+            { code: 500, text: err?.message || "Lỗi tải playlist offline" },
+            context,
+            null as any,
+            errStats as any,
+          );
+        });
       return;
     }
 
     // Handle offline fragment (TS chunk) requests from IndexedDB
     if (context.url && context.url.startsWith("offline-segment://")) {
-      const withoutPrefix = context.url.replace("offline-segment://", "");
+      const cleanUrl = context.url.split("?")[0].split("#")[0];
+      const withoutPrefix = cleanUrl.replace(/^offline-segment:\/\//, "").replace(/\/+$/, "");
       const slashIndex = withoutPrefix.lastIndexOf("/");
       const downloadId = withoutPrefix.substring(0, slashIndex);
       const segmentIndex = parseInt(withoutPrefix.substring(slashIndex + 1), 10);
 
-      import("@/services/offlineStorage").then(({ getOfflineSegment }) => {
-        if (this._aborted) return;
-        const now = performance.now();
-        const errStats = {
-          trequest: now,
-          tfirst: now,
-          tload: now,
-          loaded: 0,
-          total: 0,
-          retry: 0,
-        };
-
-        getOfflineSegment(downloadId, segmentIndex)
-          .then((buffer) => {
-            if (this._aborted) return;
-            if (!buffer) {
-              callbacks.onError(
-                { code: 404, text: `Không tìm thấy đoạn video offline #${segmentIndex}` },
-                context,
-                null as any,
-                errStats as any,
-              );
-              return;
-            }
-            const byteLength = buffer.byteLength;
-            const stats = {
-              trequest: now,
-              tfirst: now,
-              tload: now,
-              loaded: byteLength,
-              total: byteLength,
-              retry: 0,
-            };
-            callbacks.onSuccess({ url: context.url, data: buffer }, stats as any, context, null as any);
-          })
-          .catch((err) => {
-            if (this._aborted) return;
+      getOfflineSegment(downloadId, segmentIndex)
+        .then((buffer) => {
+          if (this._aborted) return;
+          if (!buffer) {
+            const errStats = makeHlsLoaderStats(0);
             callbacks.onError(
-              { code: 500, text: err?.message || "Lỗi tải đoạn video offline" },
+              { code: 404, text: `Không tìm thấy đoạn video offline #${segmentIndex}` },
               context,
               null as any,
               errStats as any,
             );
-          });
-      });
+            return;
+          }
+
+          let arrayBuffer: ArrayBuffer;
+          if (buffer instanceof ArrayBuffer) {
+            arrayBuffer = buffer;
+          } else if (ArrayBuffer.isView(buffer)) {
+            const view = buffer as any;
+            arrayBuffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+          } else {
+            arrayBuffer = buffer as any;
+          }
+
+          const byteLength = arrayBuffer.byteLength || 0;
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          const stats = (this.stats && typeof this.stats === "object") ? this.stats : makeHlsLoaderStats(byteLength);
+          if (!stats.loading) {
+            stats.loading = { start: now - 10, first: now - 5, end: now };
+          }
+          stats.loading.start = stats.loading.start || (now - 10);
+          stats.loading.first = stats.loading.first || (now - 5);
+          stats.loading.end = now;
+          stats.loaded = byteLength;
+          stats.total = byteLength;
+          stats.bwEstimate = 50000000;
+
+          callbacks.onSuccess({ url: context.url, data: arrayBuffer }, stats as any, context, null as any);
+        })
+        .catch((err) => {
+          if (this._aborted) return;
+          const errStats = makeHlsLoaderStats(0);
+          callbacks.onError(
+            { code: 500, text: err?.message || "Lỗi tải đoạn video offline" },
+            context,
+            null as any,
+            errStats as any,
+          );
+        });
       return;
     }
 

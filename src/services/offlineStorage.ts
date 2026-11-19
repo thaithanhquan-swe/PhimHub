@@ -162,9 +162,27 @@ export async function getOfflineSegment(
     const id = `${downloadId}_${segmentIndex}`;
     const request = store.get(id);
 
-    request.onsuccess = () => {
+    request.onsuccess = async () => {
       const result = request.result;
-      resolve(result ? result.data : undefined);
+      if (!result || !result.data) {
+        resolve(undefined);
+        return;
+      }
+      try {
+        const raw = result.data;
+        if (raw instanceof ArrayBuffer) {
+          resolve(raw);
+        } else if (ArrayBuffer.isView(raw)) {
+          resolve(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+        } else if (typeof Blob !== "undefined" && raw instanceof Blob) {
+          const buf = await raw.arrayBuffer();
+          resolve(buf);
+        } else {
+          resolve(raw);
+        }
+      } catch (err) {
+        reject(err);
+      }
     };
     request.onerror = () => reject(request.error);
   });
@@ -432,6 +450,20 @@ export async function startOfflineDownload(params: StartDownloadParams): Promise
 
       if (segmentUrls.length === 0) {
         throw new Error("Không tìm thấy đoạn video nào trong danh sách phát.");
+      }
+
+      // Ensure proper VOD tags so Hls.js knows the playlist is a finished VOD video
+      if (!offlineLines.some((l) => l.startsWith("#EXT-X-PLAYLIST-TYPE"))) {
+        const m3uIdx = offlineLines.findIndex((l) => l.startsWith("#EXTM3U"));
+        if (m3uIdx !== -1) {
+          offlineLines.splice(m3uIdx + 1, 0, "#EXT-X-PLAYLIST-TYPE:VOD");
+        } else {
+          offlineLines.unshift("#EXT-X-PLAYLIST-TYPE:VOD");
+        }
+      }
+
+      if (!offlineLines.some((l) => l.startsWith("#EXT-X-ENDLIST"))) {
+        offlineLines.push("#EXT-X-ENDLIST");
       }
 
       downloadItem.totalSegments = segmentUrls.length;

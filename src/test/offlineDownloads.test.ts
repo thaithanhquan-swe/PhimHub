@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { formatBytes, generateDownloadId } from "@/services/offlineStorage";
+import { PlaylistAdBlockLoader } from "@/lib/adBlockPlaylist";
+import * as offlineStorage from "@/services/offlineStorage";
 
 describe("Offline Storage & Utilities", () => {
   it("generates correct download IDs based on slug and indices", () => {
@@ -17,5 +19,69 @@ describe("Offline Storage & Utilities", () => {
     expect(formatBytes(150.5 * 1024 * 1024)).toBe("150.5 MB");
     expect(formatBytes(1.5 * 1024 * 1024 * 1024)).toBe("1.50 GB");
     expect(formatBytes(12.75 * 1024 * 1024 * 1024)).toBe("12.75 GB");
+  });
+
+  it("loads offline playlist and passes valid Hls LoaderStats with loading.start", async () => {
+    vi.spyOn(offlineStorage, "getOfflineDownload").mockResolvedValue({
+      id: "test-slug_s0_e0",
+      movieId: "123",
+      movieSlug: "test-slug",
+      movieTitle: "Test Movie",
+      posterUrl: "https://example.com/poster.jpg",
+      backdropUrl: "https://example.com/backdrop.jpg",
+      serverName: "Server 1",
+      serverIndex: 0,
+      episodeName: "Tập 1",
+      episodeSlug: "tap-1",
+      episodeIndex: 0,
+      status: "completed",
+      progress: 100,
+      downloadedSegments: 1,
+      totalSegments: 1,
+      totalBytes: 5000,
+      playlistText: "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:10.0,\noffline-segment://test-slug_s0_e0/0",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const loader = new (PlaylistAdBlockLoader as any)({} as any);
+    const context = { url: "offline://test-slug_s0_e0", responseType: "text" };
+
+    const result = await new Promise<{ response: any; stats: any }>((resolve, reject) => {
+      loader.load(context as any, {} as any, {
+        onSuccess: (response: any, stats: any) => resolve({ response, stats }),
+        onError: (err: any) => reject(err),
+        onTimeout: () => reject(new Error("timeout")),
+      });
+    });
+
+    expect(result.response.data).toContain("#EXT-X-ENDLIST");
+    expect(result.response.data).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
+    expect(result.stats).toBeDefined();
+    expect(result.stats.loading).toBeDefined();
+    expect(result.stats.loading.start).toBeGreaterThan(0);
+    expect(result.stats.loading.end).toBeGreaterThan(0);
+  });
+
+  it("loads offline fragment and returns ArrayBuffer with valid Hls LoaderStats", async () => {
+    const fakeBuffer = new Uint8Array([0x47, 0x40, 0x00, 0x10, 0x00]).buffer;
+    vi.spyOn(offlineStorage, "getOfflineSegment").mockResolvedValue(fakeBuffer);
+
+    const loader = new (PlaylistAdBlockLoader as any)({} as any);
+    const context = { url: "offline-segment://test-slug_s0_e0/0", responseType: "arraybuffer" };
+
+    const result = await new Promise<{ response: any; stats: any }>((resolve, reject) => {
+      loader.load(context as any, {} as any, {
+        onSuccess: (response: any, stats: any) => resolve({ response, stats }),
+        onError: (err: any) => reject(err),
+        onTimeout: () => reject(new Error("timeout")),
+      });
+    });
+
+    expect(result.response.data).toBeInstanceOf(ArrayBuffer);
+    expect((result.response.data as ArrayBuffer).byteLength).toBe(5);
+    expect(result.stats.loading).toBeDefined();
+    expect(result.stats.loading.start).toBeGreaterThan(0);
+    expect(result.stats.loaded).toBe(5);
   });
 });
