@@ -1,10 +1,12 @@
 import {
   Film,
+  HardDrive,
   Tv,
+  WifiOff,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { FranchiseSeasonsBar } from "@/components/FranchiseSeasonsBar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
@@ -12,6 +14,7 @@ import { MovieRow } from "@/components/MovieRow";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { RequestError } from "@/components/RequestState";
 import {
+  EpisodeDownloadButton,
   EpisodeSelector,
   MovieCastDirector,
   MovieHeroBanner,
@@ -21,7 +24,9 @@ import { useWatchHistory } from "@/context/WatchHistoryContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { getBackdropUrl } from "@/data/movies";
 import { useImdbRating } from "@/hooks/useImdbRating";
+import { useOfflineDownloads } from "@/hooks/useOfflineDownloads";
 import { useSyncWatchProgress } from "@/hooks/useSyncWatchProgress";
+import { formatBytes } from "@/services/offlineStorage";
 import { cn } from "@/lib/utils";
 import {
   getFranchiseParts,
@@ -46,6 +51,8 @@ export function MovieDetailPage() {
 
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
+  const { downloads } = useOfflineDownloads();
+  const [playOffline, setPlayOffline] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const getProgressRef = useRef(getProgress);
   getProgressRef.current = getProgress;
@@ -111,6 +118,7 @@ export function MovieDetailPage() {
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
+    setPlayOffline(false);
 
     const progress = getProgressRef.current(id);
     let serverIndex = 0;
@@ -193,6 +201,53 @@ export function MovieDetailPage() {
   }, [movie, currentServer, currentEpisode, currentServerIndex, currentEpisodeIndex, saveProgress, syncWatchProgress]);
 
   if (movieQuery.error && !movie) {
+    const matchingOfflineDownloads = downloads.filter(
+      (d) => (d.movieSlug === id || d.movieId === id) && d.status === "completed",
+    );
+
+    if (matchingOfflineDownloads.length > 0) {
+      return (
+        <div className="pt-24 pb-16 px-4 sm:px-[4.5%] max-w-4xl mx-auto">
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200 shadow-lg">
+            <div className="flex items-center gap-2 font-bold mb-1">
+              <WifiOff className="size-5 text-amber-400" />
+              <span>Chế độ ngoại tuyến (Không có Wi-Fi)</span>
+            </div>
+            <p className="text-xs text-amber-200/80">
+              Không thể kết nối máy chủ phim, nhưng bạn đã tải sẵn {matchingOfflineDownloads.length} tập của phim này về máy để xem offline!
+            </p>
+          </div>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-white mb-2">{matchingOfflineDownloads[0].movieTitle}</h1>
+            <p className="text-xs text-white/60 mb-4">Chọn tập đã tải để mở xem ngay:</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {matchingOfflineDownloads.map((dl) => (
+                <Link
+                  key={dl.id}
+                  to="/downloads"
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition-colors"
+                >
+                  <div>
+                    <p className="font-bold text-sm text-white">{dl.episodeName}</p>
+                    <p className="text-xs text-white/50">{dl.serverName} · {formatBytes(dl.totalBytes)}</p>
+                  </div>
+                  <span className="rounded bg-primary px-3 py-1 text-xs font-bold text-white shadow-sm">
+                    Xem ngay
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+          <Link
+            to="/downloads"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
+          >
+            ← Đi đến Kho phim ngoại tuyến
+          </Link>
+        </div>
+      );
+    }
+
     return (
       <div className="pt-20">
         <RequestError
@@ -203,6 +258,15 @@ export function MovieDetailPage() {
           }
           onRetry={() => void movieQuery.refetch()}
         />
+        <div className="mt-4 text-center">
+          <Link
+            to="/downloads"
+            className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20 transition-colors"
+          >
+            <HardDrive className="size-4 text-primary" />
+            <span>Xem các phim đã tải ngoại tuyến</span>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -221,6 +285,29 @@ export function MovieDetailPage() {
     currentServer &&
     currentServer.items &&
     currentEpisodeIndex < currentServer.items.length - 1,
+  );
+
+  const currentDownloadedEpisode = downloads.find(
+    (d) =>
+      d.movieSlug === movie?.slug &&
+      d.serverIndex === currentServerIndex &&
+      d.episodeIndex === currentEpisodeIndex,
+  );
+  const isCurrentEpisodeDownloaded = currentDownloadedEpisode?.status === "completed";
+  const effectiveM3u8Url =
+    playOffline && isCurrentEpisodeDownloaded
+      ? `offline://${currentDownloadedEpisode.id}`
+      : currentEpisode?.m3u8;
+
+  const downloadedEpisodeIndices = new Set(
+    downloads
+      .filter(
+        (d) =>
+          d.movieSlug === movie?.slug &&
+          d.serverIndex === currentServerIndex &&
+          d.status === "completed",
+      )
+      .map((d) => d.episodeIndex),
   );
 
   function handleNextEpisode() {
@@ -257,6 +344,7 @@ export function MovieDetailPage() {
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
+    setPlayOffline(false);
 
     // Keep URL search params in sync with the current episode so F5 refresh preserves this episode
     setSearchParams(
@@ -342,9 +430,9 @@ export function MovieDetailPage() {
               <div className="relative">
                 <Suspense fallback={<div className="aspect-video w-full animate-pulse rounded-md bg-white/10" />}>
                   <VideoPlayer
-                    key={`${movie.slug}-${currentServerIndex}-${preferEmbed}`}
-                    m3u8Url={currentEpisode.m3u8}
-                    embedUrl={currentEpisode.embed}
+                    key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${playOffline}`}
+                    m3u8Url={effectiveM3u8Url}
+                    embedUrl={playOffline ? undefined : currentEpisode.embed}
                     title={movie.title}
                     episodeName={currentEpisode.name}
                     poster={getBackdropUrl(movie)}
@@ -353,7 +441,7 @@ export function MovieDetailPage() {
                     hasNextEpisode={hasNextEpisode}
                     onNextEpisode={handleNextEpisode}
                     onTimeUpdate={handleProgressUpdate}
-                    preferEmbed={preferEmbed}
+                    preferEmbed={preferEmbed && !playOffline}
                   />
                 </Suspense>
 
@@ -425,6 +513,19 @@ export function MovieDetailPage() {
                   )}
                 </div>
               </div>
+
+              {/* Offline Download Action Banner */}
+              <div className="mt-3">
+                <EpisodeDownloadButton
+                  movie={movie}
+                  currentServer={currentServer}
+                  currentServerIndex={currentServerIndex}
+                  currentEpisode={currentEpisode}
+                  currentEpisodeIndex={currentEpisodeIndex}
+                  isPlayingOffline={playOffline && isCurrentEpisodeDownloaded}
+                  onToggleOfflinePlayback={(val) => setPlayOffline(val)}
+                />
+              </div>
             </div>
           ) : (
             <div className="flex aspect-video w-full flex-col items-center justify-center rounded-md bg-[#1d1d1d] text-center text-white/60">
@@ -444,6 +545,7 @@ export function MovieDetailPage() {
           <EpisodeSelector
             currentServer={currentServer}
             currentEpisodeIndex={currentEpisodeIndex}
+            downloadedEpisodeIndices={downloadedEpisodeIndices}
             onSelectEpisode={(idx) => selectEpisode(currentServerIndex, idx)}
           />
 

@@ -118,7 +118,7 @@ export function useHlsPlayer({
 
       if (v && !hasLoadedFrames && !isPlayingRef.current && !hasParsedLevels) {
         console.warn("HLS load timed out after 18s, falling back to embed player");
-        if (embedUrl) {
+        if (embedUrl && !m3u8Url.startsWith("offline://")) {
           onFallbackToEmbedRef.current();
         } else {
           setIsLoading(false);
@@ -147,6 +147,7 @@ export function useHlsPlayer({
         fragLoadingMaxRetry: 4,
         startLevel: -1,
         pLoader: PlaylistAdBlockLoader as any,
+        fLoader: PlaylistAdBlockLoader as any,
         loader: PlaylistAdBlockLoader as any,
       });
 

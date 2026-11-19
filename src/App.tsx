@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { WatchHistoryProvider } from "@/context/WatchHistoryContext";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import { DownloadsPage } from "@/pages/DownloadsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const HomePage = lazy(() => import("@/pages/HomePage").then(({ HomePage }) => ({ default: HomePage })));
@@ -37,6 +38,7 @@ function AppRoutes() {
           <Route path="/movie/:id" element={<MovieDetailPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/downloads" element={<DownloadsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

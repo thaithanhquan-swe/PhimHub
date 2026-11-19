@@ -1,10 +1,11 @@
-import { Download, Menu } from "lucide-react";
+import { Download, HardDrive, Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
 import { PwaInstallModal } from "@/components/PwaInstallModal";
+import { useOfflineDownloads } from "@/hooks/useOfflineDownloads";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +17,8 @@ import {
 
 export function Navbar() {
   const { isInstalled, isIOS, showGuide, setShowGuide, triggerInstall } = usePwaInstall();
+  const { downloads } = useOfflineDownloads();
+  const completedDownloadsCount = downloads.filter((d) => d.status === "completed").length;
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -79,6 +82,7 @@ export function Navbar() {
     if (id === "movie") return currentPath === "/" && currentType === "movie" && !currentImdb;
     if (id === "hoat-hinh") return currentPath === "/" && currentType === "hoat-hinh";
     if (id === "schedule") return currentPath === "/schedule";
+    if (id === "downloads") return currentPath === "/downloads";
     if (id === "search") return currentPath === "/search";
     if (id === "saved") return isSavedList;
     return false;
@@ -143,6 +147,27 @@ export function Navbar() {
         {/* Responsive Search Bar + Provider Status Badge + PWA Download */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[240px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end min-w-0">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
+
+          {/* Offline Downloads Link */}
+          <Link
+            to="/downloads"
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all active:scale-95 shrink-0 shadow-sm border",
+              currentPath === "/downloads"
+                ? "bg-primary text-white border-primary"
+                : "border-white/15 bg-white/10 text-white/90 hover:bg-white/20 hover:text-white",
+            )}
+            title="Kho phim đã tải (Xem ngoại tuyến)"
+            aria-label="Kho phim đã tải ngoại tuyến"
+          >
+            <HardDrive className="size-3.5 sm:size-4 text-primary" />
+            <span className="hidden min-[480px]:inline text-[11px] sm:text-xs">Phim đã tải</span>
+            {completedDownloadsCount > 0 && (
+              <span className="grid size-4 place-items-center rounded-full bg-emerald-500 text-[10px] font-black text-black leading-none">
+                {completedDownloadsCount}
+              </span>
+            )}
+          </Link>
 
           {/* PWA Download / Install App Button */}
           <button

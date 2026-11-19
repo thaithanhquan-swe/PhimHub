@@ -181,15 +181,127 @@ export function cleanHlsPlaylist(text: string): string {
 }
 
 /**
- * Custom Hls.js Playlist Loader that intercepts playlist requests
- * and strips injected ad segments before Hls.js parses level fragments.
+ * Custom Hls.js Playlist and Fragment Loader that:
+ * 1. Intercepts offline requests (offline:// and offline-segment://) and retrieves video from IndexedDB.
+ * 2. Intercepts online playlist requests and strips injected ad segments before Hls.js parses level fragments.
  */
 export class PlaylistAdBlockLoader extends (Hls.DefaultConfig.loader as any) {
+  private _aborted = false;
+
   load(
     context: PlaylistLoaderContext,
     config: LoaderConfiguration,
     callbacks: LoaderCallbacks<PlaylistLoaderContext>,
   ) {
+    this._aborted = false;
+
+    // Handle offline master / media playlist requests
+    if (context.url && context.url.startsWith("offline://")) {
+      const downloadId = context.url.replace("offline://", "");
+      import("@/services/offlineStorage").then(({ getOfflineDownload }) => {
+        if (this._aborted) return;
+        const now = performance.now();
+        const errStats = {
+          trequest: now,
+          tfirst: now,
+          tload: now,
+          loaded: 0,
+          total: 0,
+          retry: 0,
+        };
+
+        getOfflineDownload(downloadId)
+          .then((item) => {
+            if (this._aborted) return;
+            if (!item || !item.playlistText) {
+              callbacks.onError(
+                { code: 404, text: "Không tìm thấy dữ liệu phát offline" },
+                context,
+                null as any,
+                errStats as any,
+              );
+              return;
+            }
+            const data = item.playlistText;
+            const stats = {
+              trequest: now,
+              tfirst: now,
+              tload: now,
+              loaded: data.length,
+              total: data.length,
+              retry: 0,
+            };
+            callbacks.onSuccess({ url: context.url, data }, stats as any, context, null as any);
+          })
+          .catch((err) => {
+            if (this._aborted) return;
+            callbacks.onError(
+              { code: 500, text: err?.message || "Lỗi tải playlist offline" },
+              context,
+              null as any,
+              errStats as any,
+            );
+          });
+      });
+      return;
+    }
+
+    // Handle offline fragment (TS chunk) requests from IndexedDB
+    if (context.url && context.url.startsWith("offline-segment://")) {
+      const withoutPrefix = context.url.replace("offline-segment://", "");
+      const slashIndex = withoutPrefix.lastIndexOf("/");
+      const downloadId = withoutPrefix.substring(0, slashIndex);
+      const segmentIndex = parseInt(withoutPrefix.substring(slashIndex + 1), 10);
+
+      import("@/services/offlineStorage").then(({ getOfflineSegment }) => {
+        if (this._aborted) return;
+        const now = performance.now();
+        const errStats = {
+          trequest: now,
+          tfirst: now,
+          tload: now,
+          loaded: 0,
+          total: 0,
+          retry: 0,
+        };
+
+        getOfflineSegment(downloadId, segmentIndex)
+          .then((buffer) => {
+            if (this._aborted) return;
+            if (!buffer) {
+              callbacks.onError(
+                { code: 404, text: `Không tìm thấy đoạn video offline #${segmentIndex}` },
+                context,
+                null as any,
+                errStats as any,
+              );
+              return;
+            }
+            const byteLength = buffer.byteLength;
+            const stats = {
+              trequest: now,
+              tfirst: now,
+              tload: now,
+              loaded: byteLength,
+              total: byteLength,
+              retry: 0,
+            };
+            callbacks.onSuccess({ url: context.url, data: buffer }, stats as any, context, null as any);
+          })
+          .catch((err) => {
+            if (this._aborted) return;
+            callbacks.onError(
+              { code: 500, text: err?.message || "Lỗi tải đoạn video offline" },
+              context,
+              null as any,
+              errStats as any,
+            );
+          });
+      });
+      return;
+    }
+
+    // Normal online request: clean ad segments if response is playlist string
     const originalSuccess = callbacks.onSuccess;
     callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
       if (typeof response.data === "string") {
@@ -199,6 +311,13 @@ export class PlaylistAdBlockLoader extends (Hls.DefaultConfig.loader as any) {
     };
 
     super.load(context, config, callbacks);
+  }
+
+  abort() {
+    this._aborted = true;
+    if (typeof super.abort === "function") {
+      super.abort();
+    }
   }
 }
 
