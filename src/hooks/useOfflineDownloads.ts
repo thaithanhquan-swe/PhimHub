@@ -3,8 +3,11 @@ import {
   type OfflineDownload,
   subscribeToDownloads,
   startOfflineDownload,
+  startBatchOfflineDownload,
   pauseOfflineDownload,
   cancelAndDeleteOfflineDownload,
+  cancelBatchDownloads,
+  deleteAllDownloadsForMovie,
   getStorageQuota,
   generateDownloadId,
   type StartDownloadParams,
@@ -71,8 +74,19 @@ export function useOfflineDownloads() {
     [downloads],
   );
 
+  const getMovieDownloads = useCallback(
+    (movieSlug: string) => {
+      return downloads.filter((d) => d.movieSlug === movieSlug);
+    },
+    [downloads],
+  );
+
   const startDownload = useCallback(async (params: StartDownloadParams) => {
     return startOfflineDownload(params);
+  }, []);
+
+  const startBatchDownload = useCallback(async (items: StartDownloadParams[]) => {
+    return startBatchOfflineDownload(items);
   }, []);
 
   const pauseDownload = useCallback(async (id: string) => {
@@ -83,14 +97,26 @@ export function useOfflineDownloads() {
     return cancelAndDeleteOfflineDownload(id);
   }, []);
 
+  const cancelBatchForMovie = useCallback(async (movieSlug: string, serverIndex?: number) => {
+    return cancelBatchDownloads(movieSlug, serverIndex);
+  }, []);
+
+  const deleteAllForMovie = useCallback(async (movieSlug: string) => {
+    return deleteAllDownloadsForMovie(movieSlug);
+  }, []);
+
   return {
     downloads,
     storage,
     isOnline,
     getDownloadForEpisode,
+    getMovieDownloads,
     startDownload,
+    startBatchDownload,
     pauseDownload,
     cancelDownload,
+    cancelBatchForMovie,
+    deleteAllForMovie,
     refreshStorage,
   };
 }

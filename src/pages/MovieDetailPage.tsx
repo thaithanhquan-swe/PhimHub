@@ -51,7 +51,7 @@ export function MovieDetailPage() {
 
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
-  const { downloads } = useOfflineDownloads();
+  const { downloads, startBatchDownload, cancelBatchForMovie, isOnline } = useOfflineDownloads();
   const [forceOnline, setForceOnline] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const getProgressRef = useRef(getProgress);
@@ -311,6 +311,61 @@ export function MovieDetailPage() {
       .map((d) => d.episodeIndex),
   );
 
+  const downloadingEpisodeIndices = new Set(
+    downloads
+      .filter(
+        (d) =>
+          d.movieSlug === movie?.slug &&
+          d.serverIndex === currentServerIndex &&
+          d.status === "downloading",
+      )
+      .map((d) => d.episodeIndex),
+  );
+
+  const queuedEpisodeIndices = new Set(
+    downloads
+      .filter(
+        (d) =>
+          d.movieSlug === movie?.slug &&
+          d.serverIndex === currentServerIndex &&
+          d.status === "queued",
+      )
+      .map((d) => d.episodeIndex),
+  );
+
+  function handleStartBatchDownload() {
+    if (!movie || !currentServer?.items) return;
+    const completedSet = downloadedEpisodeIndices;
+    const itemsToQueue = currentServer.items
+      .map((ep, idx) => ({ ep, idx }))
+      .filter(({ ep, idx }) => !completedSet.has(idx) && ep.m3u8)
+      .map(({ ep, idx }) => ({
+        movieId: movie.id,
+        movieSlug: movie.slug,
+        movieTitle: movie.title,
+        posterUrl: movie.posterUrl || "",
+        backdropUrl: movie.backdropUrl || "",
+        serverName: currentServer.server_name,
+        serverIndex: currentServerIndex,
+        episodeName: ep.name,
+        episodeSlug: ep.slug || `ep-${idx + 1}`,
+        episodeIndex: idx,
+        m3u8Url: ep.m3u8!,
+        quality: movie.quality,
+      }));
+
+    if (itemsToQueue.length > 0) {
+      void startBatchDownload(itemsToQueue);
+    }
+  }
+
+  function handleCancelBatchDownload() {
+    if (!movie) return;
+    if (window.confirm(`Hủy tải các tập đang tải/chờ của "${movie.title}"?`)) {
+      void cancelBatchForMovie(movie.slug, currentServerIndex);
+    }
+  }
+
   function handleNextEpisode() {
     if (hasNextEpisode) {
       selectEpisode(currentServerIndex, currentEpisodeIndex + 1);
@@ -547,7 +602,12 @@ export function MovieDetailPage() {
             currentServer={currentServer}
             currentEpisodeIndex={currentEpisodeIndex}
             downloadedEpisodeIndices={downloadedEpisodeIndices}
+            downloadingEpisodeIndices={downloadingEpisodeIndices}
+            queuedEpisodeIndices={queuedEpisodeIndices}
             onSelectEpisode={(idx) => selectEpisode(currentServerIndex, idx)}
+            onStartBatchDownload={handleStartBatchDownload}
+            onCancelBatchDownload={handleCancelBatchDownload}
+            isOnline={isOnline}
           />
 
           {/* Cast and Director details */}

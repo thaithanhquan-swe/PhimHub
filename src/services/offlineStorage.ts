@@ -13,6 +13,7 @@ export interface OfflineDownload {
   episodeName: string;
   episodeSlug: string;
   episodeIndex: number;
+  m3u8Url?: string;
   quality?: string;
   status: "queued" | "downloading" | "completed" | "paused" | "error";
   progress: number; // 0 - 100
@@ -31,6 +32,10 @@ const STORE_DOWNLOADS = "downloads";
 const STORE_SEGMENTS = "segments";
 
 let dbInstance: IDBDatabase | null = null;
+
+export function setOfflineDbInstance(db: IDBDatabase | null): void {
+  dbInstance = db;
+}
 
 export function openOfflineDb(): Promise<IDBDatabase> {
   if (dbInstance) return Promise.resolve(dbInstance);
@@ -210,12 +215,15 @@ export async function deleteOfflineSegments(downloadId: string): Promise<void> {
     const tx = db.transaction(STORE_SEGMENTS, "readwrite");
     const store = tx.objectStore(STORE_SEGMENTS);
     const index = store.index("downloadId");
-    const request = index.openCursor(IDBKeyRange.only(downloadId));
+    const hasKeyRange = typeof IDBKeyRange !== "undefined";
+    const request = hasKeyRange ? index.openCursor(IDBKeyRange.only(downloadId)) : index.openCursor();
 
     request.onsuccess = () => {
       const cursor = request.result;
       if (cursor) {
-        cursor.delete();
+        if (!hasKeyRange || cursor.value?.downloadId === downloadId) {
+          cursor.delete();
+        }
         cursor.continue();
       } else {
         resolve();
@@ -282,6 +290,8 @@ async function notifyListeners() {
 // -------------------------------------------------------------
 
 const activeControllers = new Map<string, AbortController>();
+const downloadQueue: StartDownloadParams[] = [];
+let isQueueProcessing = false;
 
 export function isDownloadActive(id: string): boolean {
   return activeControllers.has(id);
@@ -323,7 +333,7 @@ export interface StartDownloadParams {
   quality?: string;
 }
 
-export async function startOfflineDownload(params: StartDownloadParams): Promise<string> {
+async function executeSingleDownload(params: StartDownloadParams, controller: AbortController): Promise<void> {
   const {
     movieId,
     movieSlug,
@@ -340,12 +350,6 @@ export async function startOfflineDownload(params: StartDownloadParams): Promise
   } = params;
 
   const id = generateDownloadId(movieSlug, serverIndex, episodeIndex);
-
-  if (activeControllers.has(id)) {
-    return id; // Already actively downloading
-  }
-
-  const controller = new AbortController();
   activeControllers.set(id, controller);
 
   // Initialize or load existing record
@@ -364,6 +368,7 @@ export async function startOfflineDownload(params: StartDownloadParams): Promise
     episodeName,
     episodeSlug,
     episodeIndex,
+    m3u8Url,
     quality,
     status: "downloading",
     progress: 0,
@@ -377,189 +382,313 @@ export async function startOfflineDownload(params: StartDownloadParams): Promise
   downloadItem.status = "downloading";
   downloadItem.updatedAt = now;
   downloadItem.error = undefined;
+  if (m3u8Url) {
+    downloadItem.m3u8Url = m3u8Url;
+  }
   await saveOfflineDownload(downloadItem);
   void notifyListeners();
 
-  // Run downloading in background
-  (async () => {
-    try {
-      // 1. Fetch poster as data URL for offline display if not present
-      if (!downloadItem.posterDataUrl && posterUrl) {
-        try {
-          downloadItem.posterDataUrl = await fetchPosterDataUrl(posterUrl, controller.signal);
-        } catch {
-          // Non-fatal
-        }
+  const targetM3u8Url = m3u8Url || downloadItem.m3u8Url;
+  if (!targetM3u8Url) {
+    downloadItem.status = "error";
+    downloadItem.error = "Không tìm thấy liên kết m3u8 của tập phim.";
+    downloadItem.updatedAt = Date.now();
+    await saveOfflineDownload(downloadItem);
+    void notifyListeners();
+    activeControllers.delete(id);
+    return;
+  }
+
+  try {
+    // 1. Fetch poster as data URL for offline display if not present
+    if (!downloadItem.posterDataUrl && posterUrl) {
+      try {
+        downloadItem.posterDataUrl = await fetchPosterDataUrl(posterUrl, controller.signal);
+      } catch {
+        // Non-fatal
       }
-
-      // 2. Fetch and parse m3u8 playlist
-      const playlistRes = await fetch(m3u8Url, { signal: controller.signal });
-      if (!playlistRes.ok) {
-        throw new Error(`Không thể lấy danh sách phát m3u8 (HTTP ${playlistRes.status})`);
-      }
-      let rawPlaylistText = await playlistRes.text();
-      let targetPlaylistUrl = m3u8Url;
-
-      // Handle multivariant master playlist: select the best variant
-      if (rawPlaylistText.includes("#EXT-X-STREAM-INF") && !rawPlaylistText.includes("#EXTINF:")) {
-        const lines = rawPlaylistText.split("\n");
-        let bestVariantUrl = "";
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].includes("#EXT-X-STREAM-INF")) {
-            const nextLine = lines[i + 1]?.trim();
-            if (nextLine && !nextLine.startsWith("#")) {
-              bestVariantUrl = new URL(nextLine, m3u8Url).href;
-              break;
-            }
-          }
-        }
-        if (bestVariantUrl) {
-          targetPlaylistUrl = bestVariantUrl;
-          const subRes = await fetch(bestVariantUrl, { signal: controller.signal });
-          if (!subRes.ok) {
-            throw new Error(`Không thể lấy luồng video con (HTTP ${subRes.status})`);
-          }
-          rawPlaylistText = await subRes.text();
-        }
-      }
-
-      // Clean ads & make URLs absolute
-      const cleanedPlaylist = cleanHlsPlaylist(rawPlaylistText);
-      const absolutePlaylist = makeHlsUrlsAbsolute(cleanedPlaylist, targetPlaylistUrl);
-
-      // Extract all segment URLs and construct the offline playlist template
-      const lines = absolutePlaylist.split("\n");
-      const segmentUrls: string[] = [];
-      const offlineLines: string[] = [];
-      let segmentIdx = 0;
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        if (trimmed.startsWith("#")) {
-          offlineLines.push(trimmed);
-        } else {
-          if (!isAdSegmentUrl(trimmed)) {
-            segmentUrls.push(trimmed);
-            offlineLines.push(`offline-segment://${id}/${segmentIdx}`);
-            segmentIdx++;
-          }
-        }
-      }
-
-      if (segmentUrls.length === 0) {
-        throw new Error("Không tìm thấy đoạn video nào trong danh sách phát.");
-      }
-
-      // Ensure proper VOD tags so Hls.js knows the playlist is a finished VOD video
-      if (!offlineLines.some((l) => l.startsWith("#EXT-X-PLAYLIST-TYPE"))) {
-        const m3uIdx = offlineLines.findIndex((l) => l.startsWith("#EXTM3U"));
-        if (m3uIdx !== -1) {
-          offlineLines.splice(m3uIdx + 1, 0, "#EXT-X-PLAYLIST-TYPE:VOD");
-        } else {
-          offlineLines.unshift("#EXT-X-PLAYLIST-TYPE:VOD");
-        }
-      }
-
-      if (!offlineLines.some((l) => l.startsWith("#EXT-X-ENDLIST"))) {
-        offlineLines.push("#EXT-X-ENDLIST");
-      }
-
-      downloadItem.totalSegments = segmentUrls.length;
-      downloadItem.playlistText = offlineLines.join("\n");
-      await saveOfflineDownload(downloadItem);
-      void notifyListeners();
-
-      // 3. Download segments in parallel (concurrency: 3)
-      const CONCURRENCY = 3;
-      let currentIndex = 0;
-      let downloadedCount = downloadItem.downloadedSegments || 0;
-      let totalBytesAccumulated = downloadItem.totalBytes || 0;
-
-      const workers = Array.from({ length: CONCURRENCY }, async () => {
-        while (currentIndex < segmentUrls.length) {
-          if (controller.signal.aborted) return;
-          const idx = currentIndex++;
-          const segUrl = segmentUrls[idx];
-
-          // Check if already downloaded from previous attempt
-          const exists = await hasOfflineSegment(id, idx);
-          if (exists) {
-            continue;
-          }
-
-          // Fetch segment with retry
-          let attempts = 0;
-          let buffer: ArrayBuffer | null = null;
-
-          while (attempts < 3 && !buffer && !controller.signal.aborted) {
-            try {
-              const res = await fetch(segUrl, { signal: controller.signal });
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              buffer = await res.arrayBuffer();
-            } catch (err: any) {
-              attempts++;
-              if (controller.signal.aborted) return;
-              if (attempts >= 3) {
-                throw new Error(`Lỗi tải đoạn ${idx + 1}/${segmentUrls.length}: ${err?.message || "Mạng chập chờn"}`);
-              }
-              await new Promise((r) => setTimeout(r, 600 * attempts));
-            }
-          }
-
-          if (buffer) {
-            await saveOfflineSegment(id, idx, buffer);
-            downloadedCount++;
-            totalBytesAccumulated += buffer.byteLength;
-
-            downloadItem.downloadedSegments = downloadedCount;
-            downloadItem.totalBytes = totalBytesAccumulated;
-            downloadItem.progress = Math.min(99, Math.round((downloadedCount / segmentUrls.length) * 100));
-            downloadItem.updatedAt = Date.now();
-
-            // Save state periodically
-            if (downloadedCount % 3 === 0 || downloadedCount === segmentUrls.length) {
-              await saveOfflineDownload(downloadItem);
-              void notifyListeners();
-            }
-          }
-        }
-      });
-
-      await Promise.all(workers);
-
-      if (controller.signal.aborted) {
-        return;
-      }
-
-      // Mark completed
-      downloadItem.status = "completed";
-      downloadItem.progress = 100;
-      downloadItem.downloadedSegments = segmentUrls.length;
-      downloadItem.updatedAt = Date.now();
-      await saveOfflineDownload(downloadItem);
-      void notifyListeners();
-    } catch (err: any) {
-      if (controller.signal.aborted) {
-        // Paused or canceled intentionally
-        return;
-      }
-      console.error("Offline download failed:", err);
-      downloadItem.status = "error";
-      downloadItem.error = err?.message || "Lỗi tải video offline";
-      downloadItem.updatedAt = Date.now();
-      await saveOfflineDownload(downloadItem);
-      void notifyListeners();
-    } finally {
-      activeControllers.delete(id);
     }
-  })();
 
+    // 2. Fetch and parse m3u8 playlist
+    const playlistRes = await fetch(targetM3u8Url, { signal: controller.signal });
+    if (!playlistRes.ok) {
+      throw new Error(`Không thể lấy danh sách phát m3u8 (HTTP ${playlistRes.status})`);
+    }
+    let rawPlaylistText = await playlistRes.text();
+    let targetPlaylistUrl = m3u8Url;
+
+    // Handle multivariant master playlist: select the best variant
+    if (rawPlaylistText.includes("#EXT-X-STREAM-INF") && !rawPlaylistText.includes("#EXTINF:")) {
+      const lines = rawPlaylistText.split("\n");
+      let bestVariantUrl = "";
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes("#EXT-X-STREAM-INF")) {
+          const nextLine = lines[i + 1]?.trim();
+          if (nextLine && !nextLine.startsWith("#")) {
+            bestVariantUrl = new URL(nextLine, m3u8Url).href;
+            break;
+          }
+        }
+      }
+      if (bestVariantUrl) {
+        targetPlaylistUrl = bestVariantUrl;
+        const subRes = await fetch(bestVariantUrl, { signal: controller.signal });
+        if (!subRes.ok) {
+          throw new Error(`Không thể lấy luồng video con (HTTP ${subRes.status})`);
+        }
+        rawPlaylistText = await subRes.text();
+      }
+    }
+
+    // Clean ads & make URLs absolute
+    const cleanedPlaylist = cleanHlsPlaylist(rawPlaylistText);
+    const absolutePlaylist = makeHlsUrlsAbsolute(cleanedPlaylist, targetPlaylistUrl);
+
+    // Extract all segment URLs and construct the offline playlist template
+    const lines = absolutePlaylist.split("\n");
+    const segmentUrls: string[] = [];
+    const offlineLines: string[] = [];
+    let segmentIdx = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.startsWith("#")) {
+        offlineLines.push(trimmed);
+      } else {
+        if (!isAdSegmentUrl(trimmed)) {
+          segmentUrls.push(trimmed);
+          offlineLines.push(`offline-segment://${id}/${segmentIdx}`);
+          segmentIdx++;
+        }
+      }
+    }
+
+    if (segmentUrls.length === 0) {
+      throw new Error("Không tìm thấy đoạn video nào trong danh sách phát.");
+    }
+
+    // Ensure proper VOD tags so Hls.js knows the playlist is a finished VOD video
+    if (!offlineLines.some((l) => l.startsWith("#EXT-X-PLAYLIST-TYPE"))) {
+      const m3uIdx = offlineLines.findIndex((l) => l.startsWith("#EXTM3U"));
+      if (m3uIdx !== -1) {
+        offlineLines.splice(m3uIdx + 1, 0, "#EXT-X-PLAYLIST-TYPE:VOD");
+      } else {
+        offlineLines.unshift("#EXT-X-PLAYLIST-TYPE:VOD");
+      }
+    }
+
+    if (!offlineLines.some((l) => l.startsWith("#EXT-X-ENDLIST"))) {
+      offlineLines.push("#EXT-X-ENDLIST");
+    }
+
+    downloadItem.totalSegments = segmentUrls.length;
+    downloadItem.playlistText = offlineLines.join("\n");
+    await saveOfflineDownload(downloadItem);
+    void notifyListeners();
+
+    // 3. Download segments in parallel (concurrency: 3)
+    const CONCURRENCY = 3;
+    let currentIndex = 0;
+    let downloadedCount = downloadItem.downloadedSegments || 0;
+    let totalBytesAccumulated = downloadItem.totalBytes || 0;
+
+    const workers = Array.from({ length: CONCURRENCY }, async () => {
+      while (currentIndex < segmentUrls.length) {
+        if (controller.signal.aborted) return;
+        const idx = currentIndex++;
+        const segUrl = segmentUrls[idx];
+
+        // Check if already downloaded from previous attempt
+        const exists = await hasOfflineSegment(id, idx);
+        if (exists) {
+          continue;
+        }
+
+        // Fetch segment with retry
+        let attempts = 0;
+        let buffer: ArrayBuffer | null = null;
+
+        while (attempts < 3 && !buffer && !controller.signal.aborted) {
+          try {
+            const res = await fetch(segUrl, { signal: controller.signal });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            buffer = await res.arrayBuffer();
+          } catch (err: any) {
+            attempts++;
+            if (controller.signal.aborted) return;
+            if (attempts >= 3) {
+              throw new Error(`Lỗi tải đoạn ${idx + 1}/${segmentUrls.length}: ${err?.message || "Mạng chập chờn"}`);
+            }
+            await new Promise((r) => setTimeout(r, 600 * attempts));
+          }
+        }
+
+        if (buffer) {
+          await saveOfflineSegment(id, idx, buffer);
+          downloadedCount++;
+          totalBytesAccumulated += buffer.byteLength;
+
+          downloadItem.downloadedSegments = downloadedCount;
+          downloadItem.totalBytes = totalBytesAccumulated;
+          downloadItem.progress = Math.min(99, Math.round((downloadedCount / segmentUrls.length) * 100));
+          downloadItem.updatedAt = Date.now();
+
+          // Save state periodically
+          if (downloadedCount % 3 === 0 || downloadedCount === segmentUrls.length) {
+            await saveOfflineDownload(downloadItem);
+            void notifyListeners();
+          }
+        }
+      }
+    });
+
+    await Promise.all(workers);
+
+    if (controller.signal.aborted) {
+      return;
+    }
+
+    // Mark completed
+    downloadItem.status = "completed";
+    downloadItem.progress = 100;
+    downloadItem.downloadedSegments = segmentUrls.length;
+    downloadItem.updatedAt = Date.now();
+    await saveOfflineDownload(downloadItem);
+    void notifyListeners();
+  } catch (err: any) {
+    if (controller.signal.aborted) {
+      // Paused or canceled intentionally
+      return;
+    }
+    console.error("Offline download failed:", err);
+    downloadItem.status = "error";
+    downloadItem.error = err?.message || "Lỗi tải video offline";
+    downloadItem.updatedAt = Date.now();
+    await saveOfflineDownload(downloadItem);
+    void notifyListeners();
+  } finally {
+    activeControllers.delete(id);
+  }
+}
+
+export async function startOfflineDownload(params: StartDownloadParams): Promise<string> {
+  const id = generateDownloadId(params.movieSlug, params.serverIndex, params.episodeIndex);
+
+  if (activeControllers.has(id)) {
+    return id; // Already actively downloading
+  }
+
+  // Remove from queue if queued
+  const qIdx = downloadQueue.findIndex(
+    (p) => generateDownloadId(p.movieSlug, p.serverIndex, p.episodeIndex) === id,
+  );
+  if (qIdx !== -1) {
+    downloadQueue.splice(qIdx, 1);
+  }
+
+  const controller = new AbortController();
+  // Fire in background and resolve ID immediately
+  void executeSingleDownload(params, controller);
   return id;
 }
 
+export async function startBatchOfflineDownload(items: StartDownloadParams[]): Promise<string[]> {
+  const queuedIds: string[] = [];
+
+  for (const item of items) {
+    const id = generateDownloadId(item.movieSlug, item.serverIndex, item.episodeIndex);
+    const existing = await getOfflineDownload(id);
+
+    // Skip if already completed
+    if (existing && existing.status === "completed") {
+      continue;
+    }
+    // Skip if actively downloading
+    if (activeControllers.has(id)) {
+      continue;
+    }
+    // Skip if already in downloadQueue
+    if (downloadQueue.some((q) => generateDownloadId(q.movieSlug, q.serverIndex, q.episodeIndex) === id)) {
+      continue;
+    }
+
+    const now = Date.now();
+    const downloadItem: OfflineDownload = existing || {
+      id,
+      movieId: item.movieId,
+      movieSlug: item.movieSlug,
+      movieTitle: item.movieTitle,
+      posterUrl: item.posterUrl,
+      backdropUrl: item.backdropUrl,
+      serverName: item.serverName,
+      serverIndex: item.serverIndex,
+      episodeName: item.episodeName,
+      episodeSlug: item.episodeSlug,
+      episodeIndex: item.episodeIndex,
+      m3u8Url: item.m3u8Url,
+      quality: item.quality,
+      status: "queued",
+      progress: 0,
+      downloadedSegments: 0,
+      totalSegments: 0,
+      totalBytes: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    downloadItem.status = "queued";
+    downloadItem.updatedAt = now;
+    downloadItem.error = undefined;
+    if (item.m3u8Url) {
+      downloadItem.m3u8Url = item.m3u8Url;
+    }
+    await saveOfflineDownload(downloadItem);
+
+    downloadQueue.push(item);
+    queuedIds.push(id);
+  }
+
+  void notifyListeners();
+  void processDownloadQueue();
+  return queuedIds;
+}
+
+async function processDownloadQueue(): Promise<void> {
+  if (isQueueProcessing) return;
+  isQueueProcessing = true;
+
+  try {
+    while (downloadQueue.length > 0) {
+      const nextItem = downloadQueue[0];
+      const id = generateDownloadId(nextItem.movieSlug, nextItem.serverIndex, nextItem.episodeIndex);
+
+      const record = await getOfflineDownload(id);
+      if (!record || record.status !== "queued") {
+        downloadQueue.shift();
+        continue;
+      }
+
+      const controller = new AbortController();
+      await executeSingleDownload(nextItem, controller);
+
+      downloadQueue.shift();
+    }
+  } finally {
+    isQueueProcessing = false;
+  }
+}
+
 export async function pauseOfflineDownload(id: string): Promise<void> {
+  // Remove from queue if queued
+  const qIdx = downloadQueue.findIndex(
+    (p) => generateDownloadId(p.movieSlug, p.serverIndex, p.episodeIndex) === id,
+  );
+  if (qIdx !== -1) {
+    downloadQueue.splice(qIdx, 1);
+  }
+
   const controller = activeControllers.get(id);
   if (controller) {
     controller.abort();
@@ -567,7 +696,7 @@ export async function pauseOfflineDownload(id: string): Promise<void> {
   }
 
   const item = await getOfflineDownload(id);
-  if (item && item.status === "downloading") {
+  if (item && (item.status === "downloading" || item.status === "queued")) {
     item.status = "paused";
     item.updatedAt = Date.now();
     await saveOfflineDownload(item);
@@ -576,6 +705,14 @@ export async function pauseOfflineDownload(id: string): Promise<void> {
 }
 
 export async function cancelAndDeleteOfflineDownload(id: string): Promise<void> {
+  // Remove from queue if queued
+  const qIdx = downloadQueue.findIndex(
+    (p) => generateDownloadId(p.movieSlug, p.serverIndex, p.episodeIndex) === id,
+  );
+  if (qIdx !== -1) {
+    downloadQueue.splice(qIdx, 1);
+  }
+
   const controller = activeControllers.get(id);
   if (controller) {
     controller.abort();
@@ -584,6 +721,54 @@ export async function cancelAndDeleteOfflineDownload(id: string): Promise<void> 
 
   await deleteOfflineSegments(id);
   await removeOfflineDownloadRecord(id);
+  void notifyListeners();
+}
+
+export async function cancelBatchDownloads(movieSlug: string, serverIndex?: number): Promise<void> {
+  // 1. Remove from in-memory queue
+  for (let i = downloadQueue.length - 1; i >= 0; i--) {
+    const item = downloadQueue[i];
+    if (item.movieSlug === movieSlug && (serverIndex === undefined || item.serverIndex === serverIndex)) {
+      downloadQueue.splice(i, 1);
+    }
+  }
+
+  // 2. Abort any active controllers matching this movie
+  for (const [id, controller] of activeControllers.entries()) {
+    const parts = id.match(/^(.*)_s(\d+)_e(\d+)$/);
+    if (parts) {
+      const slug = parts[1];
+      const sIdx = parseInt(parts[2], 10);
+      if (slug === movieSlug && (serverIndex === undefined || sIdx === serverIndex)) {
+        controller.abort();
+        activeControllers.delete(id);
+      }
+    }
+  }
+
+  // 3. Remove records & segments from IndexedDB for any that are queued, downloading or paused
+  const allDownloads = await getAllOfflineDownloads();
+  for (const d of allDownloads) {
+    if (d.movieSlug === movieSlug && (serverIndex === undefined || d.serverIndex === serverIndex)) {
+      if (d.status === "queued" || d.status === "downloading" || d.status === "paused") {
+        await deleteOfflineSegments(d.id);
+        await removeOfflineDownloadRecord(d.id);
+      }
+    }
+  }
+
+  void notifyListeners();
+}
+
+export async function deleteAllDownloadsForMovie(movieSlug: string): Promise<void> {
+  await cancelBatchDownloads(movieSlug);
+  const allDownloads = await getAllOfflineDownloads();
+  for (const d of allDownloads) {
+    if (d.movieSlug === movieSlug) {
+      await deleteOfflineSegments(d.id);
+      await removeOfflineDownloadRecord(d.id);
+    }
+  }
   void notifyListeners();
 }
 
