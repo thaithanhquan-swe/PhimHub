@@ -52,7 +52,7 @@ export function MovieDetailPage() {
   const { movies: savedMovies, toggle } = useWatchlist();
   const { saveProgress, getProgress } = useWatchHistory();
   const { downloads } = useOfflineDownloads();
-  const [playOffline, setPlayOffline] = useState(false);
+  const [forceOnline, setForceOnline] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const getProgressRef = useRef(getProgress);
   getProgressRef.current = getProgress;
@@ -118,7 +118,7 @@ export function MovieDetailPage() {
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
-    setPlayOffline(false);
+    setForceOnline(false);
 
     const progress = getProgressRef.current(id);
     let serverIndex = 0;
@@ -294,8 +294,9 @@ export function MovieDetailPage() {
       d.episodeIndex === currentEpisodeIndex,
   );
   const isCurrentEpisodeDownloaded = currentDownloadedEpisode?.status === "completed";
+  const isPlayingOffline = Boolean(isCurrentEpisodeDownloaded && currentDownloadedEpisode && !forceOnline);
   const effectiveM3u8Url =
-    playOffline && isCurrentEpisodeDownloaded
+    isPlayingOffline && currentDownloadedEpisode
       ? `offline://${currentDownloadedEpisode.id}`
       : currentEpisode?.m3u8;
 
@@ -344,7 +345,7 @@ export function MovieDetailPage() {
     setResumePrompt(null);
     setResumeAtTime(0);
     setPreferEmbed(false);
-    setPlayOffline(false);
+    setForceOnline(false);
 
     // Keep URL search params in sync with the current episode so F5 refresh preserves this episode
     setSearchParams(
@@ -430,9 +431,9 @@ export function MovieDetailPage() {
               <div className="relative">
                 <Suspense fallback={<div className="aspect-video w-full animate-pulse rounded-md bg-white/10" />}>
                   <VideoPlayer
-                    key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${playOffline}`}
+                    key={`${movie.slug}-${currentServerIndex}-${currentEpisodeIndex}-${preferEmbed}-${isPlayingOffline}`}
                     m3u8Url={effectiveM3u8Url}
-                    embedUrl={playOffline ? undefined : currentEpisode.embed}
+                    embedUrl={isPlayingOffline ? undefined : currentEpisode.embed}
                     title={movie.title}
                     episodeName={currentEpisode.name}
                     poster={getBackdropUrl(movie)}
@@ -441,7 +442,7 @@ export function MovieDetailPage() {
                     hasNextEpisode={hasNextEpisode}
                     onNextEpisode={handleNextEpisode}
                     onTimeUpdate={handleProgressUpdate}
-                    preferEmbed={preferEmbed && !playOffline}
+                    preferEmbed={preferEmbed && !isPlayingOffline}
                   />
                 </Suspense>
 
@@ -522,8 +523,8 @@ export function MovieDetailPage() {
                   currentServerIndex={currentServerIndex}
                   currentEpisode={currentEpisode}
                   currentEpisodeIndex={currentEpisodeIndex}
-                  isPlayingOffline={playOffline && isCurrentEpisodeDownloaded}
-                  onToggleOfflinePlayback={(val) => setPlayOffline(val)}
+                  isPlayingOffline={isPlayingOffline}
+                  onToggleOfflinePlayback={(playOffline) => setForceOnline(!playOffline)}
                 />
               </div>
             </div>

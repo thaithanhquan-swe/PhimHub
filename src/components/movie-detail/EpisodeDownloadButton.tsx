@@ -130,7 +130,7 @@ export function EpisodeDownloadButton({
                   : "bg-white/15 text-white hover:bg-white/25",
               )}
             >
-              {isPlayingOffline ? "Đang phát Offline (Không tốn Wi-Fi)" : "Phát bản Offline"}
+              {isPlayingOffline ? "Đang phát từ máy (0 MB 3G/4G)" : "Đổi sang bản Offline"}
             </button>
           )}
 
