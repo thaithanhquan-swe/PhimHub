@@ -145,41 +145,50 @@ export function Navbar() {
         </nav>
 
         {/* Responsive Search Bar + Provider Status Badge + PWA Download */}
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[240px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end min-w-0">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 flex-1 max-w-[280px] sm:max-w-[460px] md:max-w-[580px] lg:max-w-[680px] xl:max-w-[760px] justify-end min-w-0">
           <ProviderStatusBadge className="shrink-0 hidden sm:inline-flex" />
 
           {/* Offline Downloads Link */}
           <Link
             to="/downloads"
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all active:scale-95 shrink-0 shadow-sm border",
+              "relative flex items-center justify-center gap-1.5 rounded-xl sm:rounded-full h-9 px-2.5 sm:px-3 text-xs font-semibold transition-all active:scale-95 shrink-0 shadow-sm border",
               currentPath === "/downloads"
-                ? "bg-primary text-white border-primary"
-                : "border-white/15 bg-white/10 text-white/90 hover:bg-white/20 hover:text-white",
+                ? "border-primary/60 bg-primary/20 text-white shadow-sm ring-1 ring-primary/40"
+                : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white",
             )}
             title="Kho phim đã tải (Xem ngoại tuyến)"
             aria-label="Kho phim đã tải ngoại tuyến"
           >
-            <HardDrive className="size-3.5 sm:size-4 text-primary" />
-            <span className="hidden min-[480px]:inline text-[11px] sm:text-xs">Phim đã tải</span>
-            {completedDownloadsCount > 0 && (
-              <span className="grid size-4 place-items-center rounded-full bg-emerald-500 text-[10px] font-black text-black leading-none">
-                {completedDownloadsCount}
-              </span>
-            )}
+            <div className="relative flex items-center justify-center">
+              <HardDrive
+                className={cn(
+                  "size-4 shrink-0 transition-colors",
+                  currentPath === "/downloads" ? "text-primary" : "text-white/80",
+                )}
+              />
+              {completedDownloadsCount > 0 && (
+                <span className="absolute -top-2 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-black shadow-md ring-2 ring-[#121212] leading-none">
+                  {completedDownloadsCount > 99 ? "99+" : completedDownloadsCount}
+                </span>
+              )}
+            </div>
+            <span className="hidden sm:inline text-xs font-medium">Phim đã tải</span>
           </Link>
 
-          {/* PWA Download / Install App Button */}
-          <button
-            type="button"
-            onClick={triggerInstall}
-            className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/20 px-2 sm:px-3 py-1.5 text-xs font-bold text-white hover:bg-primary transition-all active:scale-95 shrink-0 group shadow-sm"
-            title="Tải ứng dụng PhimHub (PWA)"
-            aria-label="Cài đặt ứng dụng PhimHub"
-          >
-            <Download className="size-3.5 sm:size-4 text-primary group-hover:text-white transition-colors" />
-            <span className="hidden min-[450px]:inline text-[11px] sm:text-xs">Tải App</span>
-          </button>
+          {/* PWA Download / Install App Button (Desktop & Tablet) */}
+          {!isInstalled && (
+            <button
+              type="button"
+              onClick={triggerInstall}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/20 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary transition-all active:scale-95 shrink-0 group shadow-sm"
+              title="Tải ứng dụng PhimHub (PWA)"
+              aria-label="Cài đặt ứng dụng PhimHub"
+            >
+              <Download className="size-3.5 sm:size-4 text-primary group-hover:text-white transition-colors" />
+              <span className="hidden min-[450px]:inline text-[11px] sm:text-xs">Tải App</span>
+            </button>
+          )}
 
           <SearchAutocomplete />
         </div>

@@ -70,10 +70,17 @@ export function openOfflineDb(): Promise<IDBDatabase> {
         dbInstance?.close();
         dbInstance = null;
       };
+      dbInstance.onclose = () => {
+        dbInstance = null;
+      };
+      dbInstance.onerror = () => {
+        dbInstance = null;
+      };
       resolve(dbInstance);
     };
 
     request.onerror = () => {
+      dbInstance = null;
       reject(request.error);
     };
   });
@@ -84,19 +91,37 @@ export function openOfflineDb(): Promise<IDBDatabase> {
 // -------------------------------------------------------------
 
 export async function getAllOfflineDownloads(): Promise<OfflineDownload[]> {
-  const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_DOWNLOADS, "readonly");
-    const store = tx.objectStore(STORE_DOWNLOADS);
-    const request = store.getAll();
+  const readAll = async (db: IDBDatabase): Promise<OfflineDownload[]> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(STORE_DOWNLOADS, "readonly");
+        const store = tx.objectStore(STORE_DOWNLOADS);
+        const request = store.getAll();
 
-    request.onsuccess = () => {
-      const items = (request.result as OfflineDownload[]) || [];
-      items.sort((a, b) => b.createdAt - a.createdAt);
-      resolve(items);
-    };
-    request.onerror = () => reject(request.error);
-  });
+        request.onsuccess = () => {
+          const items = (request.result as OfflineDownload[]) || [];
+          items.sort((a, b) => b.createdAt - a.createdAt);
+          resolve(items);
+        };
+        request.onerror = () => reject(request.error);
+      } catch (txErr) {
+        reject(txErr);
+      }
+    });
+  };
+
+  try {
+    const db = await openOfflineDb();
+    return await readAll(db);
+  } catch (err) {
+    if (typeof window !== "undefined" && window.indexedDB) {
+      console.warn("Retrying getAllOfflineDownloads with fresh IDB instance:", err);
+      dbInstance = null;
+      const freshDb = await openOfflineDb();
+      return await readAll(freshDb);
+    }
+    throw err;
+  }
 }
 
 export async function getOfflineDownload(id: string): Promise<OfflineDownload | undefined> {
@@ -267,7 +292,9 @@ export function subscribeToDownloads(listener: DownloadEventListener): () => voi
   // Immediately emit current state
   getAllOfflineDownloads()
     .then((items) => listener(items))
-    .catch(() => {});
+    .catch((err) => {
+      console.warn("Could not fetch offline downloads in subscribe:", err);
+    });
 
   return () => {
     listeners.delete(listener);

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
 import { formatBytes, generateDownloadId } from "@/services/offlineStorage";
 import { PlaylistAdBlockLoader } from "@/lib/adBlockPlaylist";
 import * as offlineStorage from "@/services/offlineStorage";
+import { useOfflineDownloads } from "@/hooks/useOfflineDownloads";
 
 describe("Offline Storage & Utilities", () => {
   it("generates correct download IDs based on slug and indices", () => {
@@ -267,5 +269,14 @@ describe("Offline Storage & Utilities", () => {
     expect(deletedRecords).toContain("cancel-test_s0_e0");
     expect(deletedRecords).not.toContain("cancel-test_s0_e1");
     offlineStorage.setOfflineDbInstance(null);
+  });
+
+  it("useOfflineDownloads hook returns shared state and initial loading state", () => {
+    const { result } = renderHook(() => useOfflineDownloads());
+    expect(Array.isArray(result.current.downloads)).toBe(true);
+    expect(typeof result.current.storage).toBe("object");
+    expect(typeof result.current.isLoading).toBe("boolean");
+    expect(typeof result.current.startDownload).toBe("function");
+    expect(typeof result.current.cancelDownload).toBe("function");
   });
 });

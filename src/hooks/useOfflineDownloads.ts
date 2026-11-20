@@ -13,13 +13,56 @@ import {
   type StartDownloadParams,
 } from "@/services/offlineStorage";
 
-export function useOfflineDownloads() {
-  const [downloads, setDownloads] = useState<OfflineDownload[]>([]);
-  const [storage, setStorage] = useState<{ usedBytes: number; quotaBytes: number; availableBytes: number }>({
-    usedBytes: 0,
-    quotaBytes: 0,
-    availableBytes: 0,
+// Shared global in-memory state across all hook instances to prevent desync
+let globalDownloads: OfflineDownload[] = [];
+let hasInitiallyLoaded = false;
+let globalStorage = { usedBytes: 0, quotaBytes: 0, availableBytes: 0 };
+const subscribers = new Set<() => void>();
+
+function notifySubscribers() {
+  for (const sub of subscribers) {
+    try {
+      sub();
+    } catch {
+      // Ignore subscriber errors
+    }
+  }
+}
+
+let isGlobalSubscribed = false;
+function ensureGlobalSubscription() {
+  if (isGlobalSubscribed) return;
+  isGlobalSubscribed = true;
+
+  subscribeToDownloads((items) => {
+    globalDownloads = items;
+    hasInitiallyLoaded = true;
+    notifySubscribers();
+    void syncStorage();
   });
+
+  void syncStorage();
+}
+
+async function syncStorage() {
+  try {
+    const quota = await getStorageQuota();
+    globalStorage = quota;
+    notifySubscribers();
+  } catch {
+    // Ignore
+  }
+}
+
+export function useOfflineDownloads() {
+  // Ensure the single global storage listener is running
+  if (typeof window !== "undefined") {
+    ensureGlobalSubscription();
+  }
+
+  const [downloads, setDownloads] = useState<OfflineDownload[]>(globalDownloads);
+  const [storage, setStorage] = useState(globalStorage);
+  const [isLoading, setIsLoading] = useState(!hasInitiallyLoaded);
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -42,29 +85,29 @@ export function useOfflineDownloads() {
     };
   }, []);
 
-  // Update storage quota
+  // Update storage quota on demand
   const refreshStorage = useCallback(async () => {
-    try {
-      const quota = await getStorageQuota();
-      setStorage(quota);
-    } catch {
-      // Ignore
-    }
+    await syncStorage();
   }, []);
 
-  // Subscribe to downloads changes
+  // Subscribe to shared state changes
   useEffect(() => {
-    const unsubscribe = subscribeToDownloads((items) => {
-      setDownloads(items);
-      void refreshStorage();
-    });
+    ensureGlobalSubscription();
 
-    void refreshStorage();
+    function handleChange() {
+      setDownloads(globalDownloads);
+      setStorage(globalStorage);
+      setIsLoading(!hasInitiallyLoaded);
+    }
+
+    subscribers.add(handleChange);
+    // Sync on mount in case it loaded before listener was added
+    handleChange();
 
     return () => {
-      unsubscribe();
+      subscribers.delete(handleChange);
     };
-  }, [refreshStorage]);
+  }, []);
 
   const getDownloadForEpisode = useCallback(
     (movieSlug: string, serverIndex: number, episodeIndex: number) => {
@@ -108,6 +151,7 @@ export function useOfflineDownloads() {
   return {
     downloads,
     storage,
+    isLoading,
     isOnline,
     getDownloadForEpisode,
     getMovieDownloads,

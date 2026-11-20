@@ -40,6 +40,7 @@ export function DownloadsPage() {
   const {
     downloads,
     storage,
+    isLoading,
     isOnline,
     cancelDownload,
     cancelBatchForMovie,
@@ -70,7 +71,8 @@ export function DownloadsPage() {
     const map = new Map<string, MovieDownloadGroup>();
 
     for (const item of completedDownloads) {
-      const existing = map.get(item.movieSlug);
+      const groupKey = item.movieSlug || item.movieId || item.id;
+      const existing = map.get(groupKey);
       if (existing) {
         existing.totalBytes += item.totalBytes;
         existing.episodes.push(item);
@@ -78,8 +80,8 @@ export function DownloadsPage() {
           existing.posterDataUrl = item.posterDataUrl;
         }
       } else {
-        map.set(item.movieSlug, {
-          movieSlug: item.movieSlug,
+        map.set(groupKey, {
+          movieSlug: groupKey,
           movieTitle: item.movieTitle,
           posterUrl: item.posterUrl,
           posterDataUrl: item.posterDataUrl,
@@ -266,7 +268,13 @@ export function DownloadsPage() {
 
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80">
-              {completedGroups.length} bộ phim ({completedDownloads.length} tập)
+              {isLoading ? (
+                <span className="flex items-center gap-1.5 text-white/60">
+                  <Loader2 className="size-3 animate-spin text-primary" /> Đang kiểm tra...
+                </span>
+              ) : (
+                `${completedGroups.length} bộ phim (${completedDownloads.length} tập)`
+              )}
             </span>
           </div>
         </div>
@@ -459,7 +467,12 @@ export function DownloadsPage() {
           Phim đã tải xong ({completedGroups.length} bộ · {completedDownloads.length} tập)
         </h2>
 
-        {completedGroups.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col gap-3">
+            <div className="h-28 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
+            <div className="h-28 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
+          </div>
+        ) : completedGroups.length === 0 ? (
           <div className="grid place-items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] py-16 px-4 text-center">
             <div className="grid size-16 place-items-center rounded-full bg-white/5 text-white/40 mb-4">
               <Download className="size-8" />
