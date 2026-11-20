@@ -3,13 +3,32 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { SkipAdButton } from "@/components/player/SkipAdButton";
 
 describe("Netflix-style Skip Ad Button", () => {
-  it("renders SkipAdButton with clean 'Bỏ qua quảng cáo' text during the ad segment (< 85s)", () => {
+  it("does NOT render when movie has no ad (hasAd = false)", () => {
+    const handleSkip = vi.fn();
+    const { container } = render(
+      <SkipAdButton
+        currentTime={15}
+        duration={1200}
+        isScreenLocked={false}
+        hasAd={false}
+        onSkipAd={handleSkip}
+      />,
+    );
+
+    // Clean movies without ads should NEVER show the skip button
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("skip-ad-button")).toBeNull();
+  });
+
+  it("renders SkipAdButton with clean 'Bỏ qua quảng cáo' text when hasAd = true during ad segment (< 85s)", () => {
     const handleSkip = vi.fn();
     render(
       <SkipAdButton
         currentTime={15}
         duration={1200}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
@@ -18,17 +37,52 @@ describe("Netflix-style Skip Ad Button", () => {
     expect(screen.getByText("Bỏ qua quảng cáo")).toBeDefined();
   });
 
-  it("does not render when currentTime is past the ad threshold (>= 85s)", () => {
+  it("does not render when currentTime is past the ad threshold (>= adDuration)", () => {
     const handleSkip = vi.fn();
     const { container } = render(
       <SkipAdButton
         currentTime={85}
         duration={1200}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
 
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("handles custom ad durations (e.g. 30s intro sponsor clip)", () => {
+    const handleSkip = vi.fn();
+    const { container, rerender } = render(
+      <SkipAdButton
+        currentTime={20}
+        duration={1200}
+        isScreenLocked={false}
+        hasAd={true}
+        adDuration={30}
+        onSkipAd={handleSkip}
+      />,
+    );
+
+    // Visible at 20s
+    expect(screen.getByTestId("skip-ad-button")).toBeDefined();
+    const button = screen.getByText("Bỏ qua quảng cáo").closest("button");
+    fireEvent.click(button!);
+    expect(handleSkip).toHaveBeenCalledWith(30);
+
+    // Past 30s -> hidden
+    rerender(
+      <SkipAdButton
+        currentTime={30}
+        duration={1200}
+        isScreenLocked={false}
+        hasAd={true}
+        adDuration={30}
+        onSkipAd={handleSkip}
+      />,
+    );
     expect(container.firstChild).toBeNull();
   });
 
@@ -39,6 +93,8 @@ describe("Netflix-style Skip Ad Button", () => {
         currentTime={10}
         duration={50}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
@@ -53,6 +109,8 @@ describe("Netflix-style Skip Ad Button", () => {
         currentTime={10}
         duration={1200}
         isScreenLocked={true}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
@@ -60,13 +118,15 @@ describe("Netflix-style Skip Ad Button", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("calls onSkipAd(85) when clicked", () => {
+  it("calls onSkipAd(85) when clicked for standard 85s ad", () => {
     const handleSkip = vi.fn();
     render(
       <SkipAdButton
         currentTime={10}
         duration={1200}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
@@ -85,6 +145,8 @@ describe("Netflix-style Skip Ad Button", () => {
         currentTime={500}
         duration={1200}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );
@@ -98,6 +160,8 @@ describe("Netflix-style Skip Ad Button", () => {
         currentTime={25}
         duration={1200}
         isScreenLocked={false}
+        hasAd={true}
+        adDuration={85}
         onSkipAd={handleSkip}
       />,
     );

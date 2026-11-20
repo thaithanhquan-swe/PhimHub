@@ -30,6 +30,8 @@ export function VideoPlayer({
   onTimeUpdate,
   initialTime = 0,
   preferEmbed = false,
+  hasAd,
+  adDuration,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -166,6 +168,7 @@ export function VideoPlayer({
     mutedAutoplayNotice,
     setMutedAutoplayNotice,
     retryPlayback,
+    adInfo,
   } = useHlsPlayer({
     videoRef,
     m3u8Url,
@@ -248,17 +251,23 @@ export function VideoPlayer({
     resetHideControlsTimer();
   }
 
-  const handleSkipAd = useCallback((seconds = 85) => {
-    const video = videoRef.current;
-    if (!video) return;
-    const dur = Number.isFinite(video.duration) ? video.duration : 0;
-    const maxTime = dur > 0 ? dur : Math.max(video.currentTime + seconds, 0);
-    const target = Math.max(0, Math.min(maxTime, video.currentTime + seconds));
-    video.currentTime = target;
-    setCurrentTime(target);
-    triggerToast("Đã bỏ qua quảng cáo");
-    resetHideControlsTimer();
-  }, [resetHideControlsTimer, triggerToast]);
+  const effectiveHasAd = hasAd !== undefined ? hasAd : adInfo.hasAd;
+  const effectiveAdDuration = adDuration ?? (adInfo.adDuration > 0 ? adInfo.adDuration : 85);
+
+  const handleSkipAd = useCallback(
+    (seconds?: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      const target = seconds ?? effectiveAdDuration;
+      const dur = Number.isFinite(video.duration) ? video.duration : 0;
+      const maxTime = dur > 0 ? Math.min(dur, target) : target;
+      video.currentTime = maxTime;
+      setCurrentTime(maxTime);
+      triggerToast("Đã bỏ qua quảng cáo");
+      resetHideControlsTimer();
+    },
+    [effectiveAdDuration, resetHideControlsTimer, triggerToast],
+  );
 
   function changeVolume(newVol: number) {
     const video = videoRef.current;
@@ -424,8 +433,10 @@ export function VideoPlayer({
           changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100));
           break;
         case "s":
-          e.preventDefault();
-          handleSkipAd();
+          if (effectiveHasAd && currentTime < effectiveAdDuration) {
+            e.preventDefault();
+            handleSkipAd(effectiveAdDuration);
+          }
           break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
@@ -438,7 +449,17 @@ export function VideoPlayer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation, handleSkipAd]);
+  }, [
+    volume,
+    hasNextEpisode,
+    onNextEpisode,
+    isScreenLocked,
+    handleToggleScreenOrientation,
+    handleSkipAd,
+    effectiveHasAd,
+    currentTime,
+    effectiveAdDuration,
+  ]);
 
   // Timeline scrub handlers
   function handleTimelineScrub(e: React.MouseEvent<HTMLDivElement>) {
@@ -640,6 +661,8 @@ export function VideoPlayer({
         currentTime={currentTime}
         duration={duration}
         isScreenLocked={isScreenLocked}
+        hasAd={effectiveHasAd}
+        adDuration={effectiveAdDuration}
         onSkipAd={handleSkipAd}
       />
 

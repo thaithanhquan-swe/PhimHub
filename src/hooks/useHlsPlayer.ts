@@ -2,7 +2,12 @@ import Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { AUTO_QUALITY, type QualityOption } from "@/components/player";
-import { createCleanNativeM3u8Url, PlaylistAdBlockLoader } from "@/lib/adBlockPlaylist";
+import {
+  createCleanNativeM3u8Url,
+  detectAdFromPlaylist,
+  isAdSegmentUrl,
+  PlaylistAdBlockLoader,
+} from "@/lib/adBlockPlaylist";
 
 interface UseHlsPlayerOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -57,6 +62,10 @@ export function useHlsPlayer({
   const [currentQualityIndex, setCurrentQualityIndex] = useState(-1);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+  const [adInfo, setAdInfo] = useState<{ hasAd: boolean; adDuration: number }>({
+    hasAd: false,
+    adDuration: 0,
+  });
 
   // Initial resume seek
   const seekToInitialTime = useCallback(
@@ -96,6 +105,10 @@ export function useHlsPlayer({
     setBufferedEnd(0);
     setAutoNextCountdown(null);
     initialSeekAppliedRef.current = false;
+    setAdInfo({
+      hasAd: Boolean(m3u8Url && /nguonc/i.test(m3u8Url)),
+      adDuration: m3u8Url && /nguonc/i.test(m3u8Url) ? 85 : 0,
+    });
 
     if (!preferM3U8 || !m3u8Url) {
       setIsLoading(false);
@@ -210,6 +223,45 @@ export function useHlsPlayer({
         }
       });
 
+      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+        if (data?.details?.fragments) {
+          const frags = data.details.fragments;
+          const initialCC = frags[0]?.cc ?? 0;
+          let detectedAdEnd: number | null = null;
+
+          for (let i = 0; i < frags.length; i++) {
+            const frag = frags[i];
+            if (frag.start > 130) break;
+
+            // Detect discontinuity transition in the first 130 seconds
+            if (frag.start >= 10 && frag.cc > initialCC) {
+              detectedAdEnd = Math.round(frag.start);
+              break;
+            }
+
+            if (
+              frag.start >= 10 &&
+              frag.tagList?.some((tags) => tags.includes("EXT-X-DISCONTINUITY"))
+            ) {
+              detectedAdEnd = Math.round(frag.start);
+              break;
+            }
+
+            if (frag.url && isAdSegmentUrl(frag.url)) {
+              detectedAdEnd = Math.max(detectedAdEnd || 0, Math.round(frag.start + frag.duration));
+            }
+          }
+
+          if (detectedAdEnd && detectedAdEnd > 0) {
+            setAdInfo({ hasAd: true, adDuration: detectedAdEnd });
+          } else if (m3u8Url && /nguonc/i.test(m3u8Url)) {
+            setAdInfo({ hasAd: true, adDuration: 85 });
+          } else {
+            setAdInfo({ hasAd: false, adDuration: 0 });
+          }
+        }
+      });
+
       let fatalErrorCount = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) {
@@ -270,6 +322,20 @@ export function useHlsPlayer({
       const abortController = new AbortController();
 
       // Clean stream and remove ads for native Apple HLS / Safari AVPlayer
+      if (m3u8Url && !m3u8Url.startsWith("offline://")) {
+        fetch(m3u8Url, { signal: abortController.signal })
+          .then((res) => res.text())
+          .then((text) => {
+            const detected = detectAdFromPlaylist(text, m3u8Url);
+            setAdInfo(detected);
+          })
+          .catch(() => {
+            if (m3u8Url && /nguonc/i.test(m3u8Url)) {
+              setAdInfo({ hasAd: true, adDuration: 85 });
+            }
+          });
+      }
+
       createCleanNativeM3u8Url(m3u8Url, abortController.signal)
         .then((cleanUrl) => {
           nativeBlobUrl = cleanUrl;
@@ -447,5 +513,6 @@ export function useHlsPlayer({
     mutedAutoplayNotice,
     setMutedAutoplayNotice,
     retryPlayback,
+    adInfo,
   };
 }

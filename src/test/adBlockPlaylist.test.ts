@@ -1,6 +1,11 @@
 import Hls from "hls.js";
 import { describe, expect, it } from "vitest";
-import { cleanHlsPlaylist, isAdSegmentUrl, makeHlsUrlsAbsolute } from "@/lib/adBlockPlaylist";
+import {
+  cleanHlsPlaylist,
+  detectAdFromPlaylist,
+  isAdSegmentUrl,
+  makeHlsUrlsAbsolute,
+} from "@/lib/adBlockPlaylist";
 
 describe("AdBlock Playlist Filter", () => {
   it("detects various ad segment patterns correctly", () => {
@@ -248,5 +253,100 @@ describe("AdBlock Playlist Filter", () => {
     expect(converted).toContain('URI="https://example.com/media/enc.key"');
     expect(converted).toContain("https://example.com/media/segment1.ts");
     expect(converted).toContain("https://external.cdn/segment2.ts");
+  });
+
+  describe("detectAdFromPlaylist", () => {
+    it("returns hasAd = false for clean movies without any ads or discontinuities", () => {
+      const cleanPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:10.0,",
+        "movie_001.ts",
+        "#EXTINF:10.0,",
+        "movie_002.ts",
+        "#EXTINF:10.0,",
+        "movie_003.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(cleanPlaylist, "https://cdn.phimapi.com/movie/index.m3u8");
+      expect(res.hasAd).toBe(false);
+      expect(res.adDuration).toBe(0);
+    });
+
+    it("detects standard 85s spliced sponsor ad via EXT-X-DISCONTINUITY", () => {
+      const adPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:10.0,",
+        "ad_001.ts",
+        "#EXTINF:10.0,",
+        "ad_002.ts",
+        "#EXTINF:10.0,",
+        "ad_003.ts",
+        "#EXTINF:10.0,",
+        "ad_004.ts",
+        "#EXTINF:10.0,",
+        "ad_005.ts",
+        "#EXTINF:10.0,",
+        "ad_006.ts",
+        "#EXTINF:10.0,",
+        "ad_007.ts",
+        "#EXTINF:10.0,",
+        "ad_008.ts",
+        "#EXTINF:5.0,",
+        "ad_009.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:10.0,",
+        "main_movie_001.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(adPlaylist, "https://cdn.example.com/movie/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adDuration).toBe(85);
+    });
+
+    it("detects shorter 30s spliced intro ad", () => {
+      const adPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:10.0,",
+        "clip1.ts",
+        "#EXTINF:10.0,",
+        "clip2.ts",
+        "#EXTINF:10.0,",
+        "clip3.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:10.0,",
+        "movie1.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(adPlaylist, "https://cdn.example.com/movie/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adDuration).toBe(30);
+    });
+
+    it("identifies NguonC stream as having an ad by default", () => {
+      const res = detectAdFromPlaylist("", "https://phim.nguonc.com/stream/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adDuration).toBe(85);
+    });
+
+    it("detects ad segments matching ad patterns in playlist", () => {
+      const adPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:10.0,",
+        "convertv9/ad1.ts",
+        "#EXTINF:10.0,",
+        "movie1.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(adPlaylist);
+      expect(res.hasAd).toBe(true);
+    });
   });
 });

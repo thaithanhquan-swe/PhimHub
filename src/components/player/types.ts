@@ -23,4 +23,6 @@ export interface VideoPlayerProps {
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   initialTime?: number;
   preferEmbed?: boolean;
+  hasAd?: boolean;
+  adDuration?: number;
 }

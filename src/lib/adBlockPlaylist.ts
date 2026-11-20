@@ -102,6 +102,100 @@ export function isAdSegmentUrl(url: string): boolean {
   return false;
 }
 
+export interface DetectedAdInfo {
+  hasAd: boolean;
+  adDuration: number;
+}
+
+/**
+ * Analyzes an HLS playlist to detect if the stream contains an advertisement
+ * and determine its exact duration (e.g. intro sponsor ad or spliced clip).
+ */
+export function detectAdFromPlaylist(playlistText: string, url?: string): DetectedAdInfo {
+  const isNguonC = Boolean(url && /nguonc/i.test(url));
+
+  if (!playlistText || typeof playlistText !== "string") {
+    return isNguonC ? { hasAd: true, adDuration: 85 } : { hasAd: false, adDuration: 0 };
+  }
+
+  // Multivariant master playlist without media segments: fallback to URL check
+  if (playlistText.includes("#EXT-X-STREAM-INF") && !playlistText.includes("#EXTINF:")) {
+    return isNguonC ? { hasAd: true, adDuration: 85 } : { hasAd: false, adDuration: 0 };
+  }
+
+  const lines = playlistText.split("\n");
+  let accumulatedTime = 0;
+  let hasFoundDiscontinuity = false;
+  let discontinuityTime = 0;
+  let hasAdSegment = false;
+  let currentSegmentDuration = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith("#EXTINF:")) {
+      const match = trimmed.match(/#EXTINF:([\d.]+)/);
+      if (match) {
+        currentSegmentDuration = parseFloat(match[1]);
+      }
+      continue;
+    }
+
+    if (trimmed === "#EXT-X-DISCONTINUITY") {
+      // Spliced ad clip detected: discontinuity after initial segments within first 130 seconds
+      if (accumulatedTime >= 10 && accumulatedTime <= 130 && !hasFoundDiscontinuity) {
+        hasFoundDiscontinuity = true;
+        discontinuityTime = Math.round(accumulatedTime);
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("#EXT-X-CUE-OUT") || trimmed.startsWith("#EXT-OATCLS-SCTE35")) {
+      hasAdSegment = true;
+      continue;
+    }
+
+    if (!trimmed.startsWith("#")) {
+      if (isAdSegmentUrl(trimmed)) {
+        hasAdSegment = true;
+      }
+      accumulatedTime += currentSegmentDuration;
+      currentSegmentDuration = 0;
+
+      if (accumulatedTime > 150) {
+        break;
+      }
+    }
+  }
+
+  if (hasFoundDiscontinuity && discontinuityTime > 0) {
+    return {
+      hasAd: true,
+      adDuration: discontinuityTime,
+    };
+  }
+
+  if (hasAdSegment) {
+    return {
+      hasAd: true,
+      adDuration: discontinuityTime > 0 ? discontinuityTime : 85,
+    };
+  }
+
+  if (isNguonC) {
+    return {
+      hasAd: true,
+      adDuration: 85,
+    };
+  }
+
+  return {
+    hasAd: false,
+    adDuration: 0,
+  };
+}
+
 /**
  * Strips advertisement segments from an HLS (.m3u8) playlist.
  * Automatically cleans up accompanying discontinuity tags, ad keys,
