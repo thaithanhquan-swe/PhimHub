@@ -1,4 +1,4 @@
-import { Download, Star, X } from "lucide-react";
+import { Download, Sparkles, Star, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { ProviderStatusBadge } from "@/components/ProviderStatusBadge";
@@ -185,6 +185,22 @@ export function MobileNavDrawer({
             </div>
           </div>
         </div>
+
+        {/* Replay Netflix Intro */}
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            window.dispatchEvent(new CustomEvent("phimhub:replay-intro"));
+          }}
+          className="mb-4 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3 text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+        >
+          <span className="flex items-center gap-2.5">
+            <Sparkles className="size-4 text-[#E50914]" />
+            <span>Xem lại Intro Netflix</span>
+          </span>
+          <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Ta-dum</span>
+        </button>
 
         {/* Footer Status in Drawer */}
         <div className="mt-auto border-t border-white/10 pt-4 text-xs text-white/50">

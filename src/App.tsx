@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { Navbar } from "@/components/Navbar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { NetflixIntro } from "@/components/NetflixIntro";
 import { WatchHistoryProvider } from "@/context/WatchHistoryContext";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { DownloadsPage } from "@/pages/DownloadsPage";
@@ -29,8 +30,32 @@ function ScrollToTop() {
 }
 
 function AppRoutes() {
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return !sessionStorage.getItem("phimhub_intro_seen");
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    const handleReplay = () => setShowIntro(true);
+    window.addEventListener("phimhub:replay-intro", handleReplay);
+    return () => window.removeEventListener("phimhub:replay-intro", handleReplay);
+  }, []);
+
+  const handleIntroComplete = () => {
+    try {
+      sessionStorage.setItem("phimhub_intro_seen", "true");
+    } catch {
+      // Ignore
+    }
+    setShowIntro(false);
+  };
+
   return (
     <>
+      {showIntro && <NetflixIntro onComplete={handleIntroComplete} />}
       <Navbar />
       <Suspense fallback={<div className="min-h-screen pt-20"><LoadingSkeleton rows={1} /></div>}>
         <Routes>
