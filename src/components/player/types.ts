@@ -4,7 +4,7 @@ export type QualityOption = {
   height?: number;
 };
 
-export type SettingsTab = "main" | "speed" | "quality" | "ratio" | "audio" | "adSkip";
+export type SettingsTab = "main" | "speed" | "quality" | "ratio" | "audio";
 
 export type DoubleTapFeedbackState = {
   side: "left" | "right";

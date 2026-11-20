@@ -77,21 +77,6 @@ export function VideoPlayer({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
 
-  // Auto Skip Intro / Ads (customizable in settings)
-  const [autoSkipAdSeconds, setAutoSkipAdSeconds] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("phimhub_auto_skip_ad");
-      if (saved !== null) {
-        const val = Number(saved);
-        if (!isNaN(val) && val >= 0) return val;
-      }
-    } catch {
-      // Ignore
-    }
-    return 85; // Standard 85s for Vietnamese movie streams
-  });
-  const hasAutoSkippedRef = useRef(false);
-
   const preferM3U8 = Boolean(m3u8Url && !useEmbedFallback);
 
   useEffect(() => {
@@ -271,45 +256,9 @@ export function VideoPlayer({
     const target = Math.max(0, Math.min(maxTime, video.currentTime + seconds));
     video.currentTime = target;
     setCurrentTime(target);
-    triggerToast(`⚡ Đã bỏ qua quảng cáo (+${seconds}s)`);
+    triggerToast("Đã bỏ qua quảng cáo");
     resetHideControlsTimer();
   }, [resetHideControlsTimer, triggerToast]);
-
-  const handleSetAutoSkipAd = useCallback((sec: number) => {
-    setAutoSkipAdSeconds(sec);
-    try {
-      localStorage.setItem("phimhub_auto_skip_ad", String(sec));
-    } catch {
-      // Ignore
-    }
-    if (sec > 0) {
-      triggerToast(`Bật tự động bỏ qua quảng cáo ${sec}s`);
-    } else {
-      triggerToast("Đã tắt tự động bỏ qua quảng cáo");
-    }
-  }, [triggerToast]);
-
-  // Reset auto-skip tracker on stream change
-  useEffect(() => {
-    hasAutoSkippedRef.current = false;
-  }, [m3u8Url]);
-
-  // Auto-skip intro ads when starting an episode from the beginning
-  useEffect(() => {
-    if (autoSkipAdSeconds <= 0) return;
-    if (hasAutoSkippedRef.current) return;
-    if (initialTime && initialTime > 5) return;
-
-    if (currentTime > 0.4 && currentTime < 5 && duration > 150) {
-      hasAutoSkippedRef.current = true;
-      const target = Math.min(duration, autoSkipAdSeconds);
-      if (videoRef.current) {
-        videoRef.current.currentTime = target;
-        setCurrentTime(target);
-        triggerToast(`⚡ Đã tự động bỏ qua quảng cáo đầu phim (${autoSkipAdSeconds}s)`);
-      }
-    }
-  }, [currentTime, duration, autoSkipAdSeconds, initialTime, triggerToast]);
 
   function changeVolume(newVol: number) {
     const video = videoRef.current;
@@ -476,7 +425,7 @@ export function VideoPlayer({
           break;
         case "s":
           e.preventDefault();
-          handleSkipAd(autoSkipAdSeconds > 0 ? autoSkipAdSeconds : 85);
+          handleSkipAd();
           break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
@@ -489,7 +438,7 @@ export function VideoPlayer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation, handleSkipAd, autoSkipAdSeconds]);
+  }, [volume, hasNextEpisode, onNextEpisode, isScreenLocked, handleToggleScreenOrientation, handleSkipAd]);
 
   // Timeline scrub handlers
   function handleTimelineScrub(e: React.MouseEvent<HTMLDivElement>) {
@@ -681,21 +630,18 @@ export function VideoPlayer({
         onToggleOrientation={handleToggleScreenOrientation}
         onNextEpisode={onNextEpisode}
         onSkipAd={handleSkipAd}
-        autoSkipAdSeconds={autoSkipAdSeconds}
-        onSetAutoSkipAd={handleSetAutoSkipAd}
         onTimelineClick={handleTimelineScrub}
         onTimelineTouch={handleTimelineScrubTouch}
         onTimelineHover={handleTimelineHover}
         onTimelineMouseLeave={() => setHoverTime(null)}
       />
 
-      {/* Floating Skip Ad Button (early playback / intro ad) */}
+      {/* Netflix-style Floating Skip Ad Button (early playback / intro ad) */}
       <SkipAdButton
         currentTime={currentTime}
         duration={duration}
         isScreenLocked={isScreenLocked}
         onSkipAd={handleSkipAd}
-        defaultSkipSeconds={autoSkipAdSeconds > 0 ? autoSkipAdSeconds : 85}
       />
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}

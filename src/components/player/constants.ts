@@ -21,13 +21,4 @@ export const AUDIO_BOOST_LEVELS = [
   { val: 5.0, label: "500%", badge: "Tối đa" },
 ];
 
-export const AD_SKIP_OPTIONS = [
-  { val: 0, label: "Tắt", desc: "Không tự động bỏ qua" },
-  { val: 30, label: "30 giây", desc: "Bỏ qua intro ngắn" },
-  { val: 60, label: "60 giây", desc: "Bỏ qua 1 phút đầu" },
-  { val: 85, label: "85 giây", desc: "Chuẩn quảng cáo phim VN (Khuyên dùng)" },
-  { val: 90, label: "90 giây", desc: "Bỏ qua 1.5 phút đầu" },
-  { val: 120, label: "120 giây", desc: "Bỏ qua 2 phút đầu" },
-];
-
 export const AUTO_QUALITY: QualityOption = { index: -1, label: "Tự động (Auto)" };
