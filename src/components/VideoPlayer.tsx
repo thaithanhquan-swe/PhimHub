@@ -629,7 +629,6 @@ export function VideoPlayer({
         onLockScreen={handleLockScreen}
         onToggleOrientation={handleToggleScreenOrientation}
         onNextEpisode={onNextEpisode}
-        onSkipAd={handleSkipAd}
         onTimelineClick={handleTimelineScrub}
         onTimelineTouch={handleTimelineScrubTouch}
         onTimelineHover={handleTimelineHover}

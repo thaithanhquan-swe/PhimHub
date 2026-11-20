@@ -9,7 +9,6 @@ import {
   RotateCw,
   Settings,
   SkipForward,
-  FastForward,
 } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
@@ -61,7 +60,6 @@ interface PlayerBottomControlsProps {
   onLockScreen: () => void;
   onToggleOrientation: () => void;
   onNextEpisode?: () => void;
-  onSkipAd?: () => void;
   onTimelineClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   onTimelineTouch: (e: React.TouchEvent<HTMLDivElement>) => void;
   onTimelineHover: (e: React.MouseEvent<HTMLDivElement>) => void;
@@ -110,7 +108,6 @@ export function PlayerBottomControls({
   onLockScreen,
   onToggleOrientation,
   onNextEpisode,
-  onSkipAd,
   onTimelineClick,
   onTimelineTouch,
   onTimelineHover,
@@ -200,21 +197,8 @@ export function PlayerBottomControls({
           </div>
         </div>
 
-        {/* Right Controls: Skip Ad, Next Episode, Settings, PiP, Lock, Fullscreen */}
+        {/* Right Controls: Next Episode, Settings, PiP, Lock, Fullscreen */}
         <div className="flex items-center gap-0.5 sm:gap-2">
-          {/* Netflix-style Quick Skip Ad Button */}
-          {onSkipAd && (
-            <button
-              type="button"
-              onClick={onSkipAd}
-              className="flex items-center gap-1.5 rounded-[3px] border border-white/40 bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/90 hover:bg-white hover:text-black hover:border-white transition-all active:scale-95 shadow-sm cursor-pointer"
-              title="Bỏ qua quảng cáo (Phím tắt S)"
-            >
-              <FastForward className="size-3.5 fill-current" />
-              <span className="hidden min-[480px]:inline">Bỏ qua quảng cáo</span>
-            </button>
-          )}
-
           {/* Next Episode Button */}
           {hasNextEpisode && onNextEpisode && (
             <button
