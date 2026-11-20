@@ -462,7 +462,7 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
         ref={ambientGlowRef}
         className="absolute inset-0 pointer-events-none will-change-transform opacity-0"
         style={{
-          background: "radial-gradient(ellipse at center, rgba(229,9,20,0.38) 0%, rgba(138,5,12,0.18) 42%, rgba(0,0,0,0) 75%)",
+          background: "radial-gradient(ellipse 75% 45% at center, rgba(229,9,20,0.32) 0%, rgba(138,5,12,0.12) 45%, transparent 75%)",
           transition: "opacity 0.5s ease-out",
         }}
       />
@@ -476,85 +476,123 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
         }}
       >
         {/* The 3D Sculpted Ribbon Emblem (PhimHub Cinema Monogram) */}
-        <div className="relative flex items-center justify-center mb-5 sm:mb-7">
-          <div className="relative size-24 sm:size-32 md:size-36 flex items-center justify-center">
+        <div className="relative flex items-center justify-center mb-5 sm:mb-6">
+          <div className="relative size-28 sm:size-36 md:size-40 flex items-center justify-center">
             {/* Ribbon Glow Halo */}
-            <div className="absolute inset-0 rounded-3xl bg-[#E50914]/40 blur-2xl animate-pulse" />
+            <div className="absolute inset-0 rounded-full bg-[#E50914]/40 blur-3xl animate-pulse" />
 
-            {/* SVG 3D Ribbon Monogram "P" with Signature Overlapping Ribbon Folds */}
+            {/* SVG 3D Ribbon Monogram "P" with Signature Interlocking 3D Folds & Specular Sheen */}
             <svg
-              viewBox="0 0 100 120"
-              className="size-full drop-shadow-[0_15px_30px_rgba(229,9,20,0.85)] filter"
+              viewBox="0 0 130 150"
+              className="size-full drop-shadow-[0_18px_36px_rgba(0,0,0,0.9)] filter"
               xmlns="http://www.w3.org/2000/svg"
             >
               <defs>
-                {/* Left vertical ribbon pillar */}
-                <linearGradient id="netflixRibbonLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#8A050C" />
-                  <stop offset="50%" stopColor="#E50914" />
-                  <stop offset="100%" stopColor="#B20710" />
+                {/* Cylindrical Pillar Lighting (Signature Netflix Red Depth) */}
+                <linearGradient id="ribbonPillar" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#6E0005" />
+                  <stop offset="22%" stopColor="#B81D24" />
+                  <stop offset="55%" stopColor="#E50914" />
+                  <stop offset="82%" stopColor="#FF3848" />
+                  <stop offset="100%" stopColor="#8C0007" />
                 </linearGradient>
 
-                {/* Diagonal sash ribbon (Netflix signature depth fold) */}
-                <linearGradient id="netflixRibbonCenter" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#FF2E3D" />
-                  <stop offset="50%" stopColor="#E50914" />
-                  <stop offset="100%" stopColor="#96050B" />
+                {/* Loop Gradient (Sweeping 3D Arc) */}
+                <linearGradient id="ribbonLoop" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FF4F5E" />
+                  <stop offset="35%" stopColor="#E50914" />
+                  <stop offset="75%" stopColor="#A10008" />
+                  <stop offset="100%" stopColor="#540003" />
                 </linearGradient>
 
-                {/* Curved loop fold */}
-                <linearGradient id="netflixRibbonLoop" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#FF4A58" />
-                  <stop offset="60%" stopColor="#E50914" />
-                  <stop offset="100%" stopColor="#8A050C" />
+                {/* Diagonal Ribbon Sash (Netflix Signature Interlocking Fold) */}
+                <linearGradient id="ribbonSash" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FF6372" />
+                  <stop offset="40%" stopColor="#E50914" />
+                  <stop offset="100%" stopColor="#7A0005" />
                 </linearGradient>
+
+                {/* Specular Light Sheen Reflection */}
+                <linearGradient id="specularRim" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(255, 255, 255, 0.85)" />
+                  <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+                </linearGradient>
+
+                {/* Deep Realistic Ribbon Shadow */}
+                <filter id="ribbonShadow" x="-25%" y="-25%" width="160%" height="160%">
+                  <feDropShadow dx="3" dy="5" stdDeviation="4" floodColor="#000000" floodOpacity="0.9" />
+                </filter>
               </defs>
 
-              {/* Back Drop Shadow of Ribbon */}
+              {/* Back drop shadow of the vertical stem */}
+              <path d="M 25 12 L 51 12 L 51 136 Q 38 141 25 136 Z" fill="#2E0003" opacity="0.85" />
+
+              {/* Vertical Left Ribbon Pillar (with Netflix signature bottom curved smile) */}
+              <path d="M 25 12 L 51 12 L 51 134 Q 38 140 25 134 Z" fill="url(#ribbonPillar)" />
+
+              {/* Upper Loop of the "P" Ribbon (Mathematical Golden Ratio Curve) */}
               <path
-                d="M20 10 L40 10 L40 110 L20 110 Z"
-                fill="#3A0003"
-                opacity="0.9"
+                d="M 51 12 
+                   C 82 12, 108 28, 108 52 
+                   C 108 76, 82 92, 51 92 
+                   L 51 68 
+                   C 70 68, 82 60, 82 52 
+                   C 82 44, 70 36, 51 36 
+                   Z"
+                fill="url(#ribbonLoop)"
               />
 
-              {/* Main Vertical Left Stem */}
+              {/* Return fold shadow where loop folds behind pillar */}
+              <path d="M 51 68 L 51 92 L 44 92 L 44 68 Z" fill="#200002" opacity="0.75" />
+
+              {/* Diagonal Ribbon Sash Overlap (Signature 3D Ribbon Twist) */}
               <path
-                d="M22 10 L38 10 L38 110 L22 110 Z"
-                fill="url(#netflixRibbonLeft)"
+                d="M 51 12 L 76 12 L 50 68 L 25 68 Z"
+                fill="url(#ribbonSash)"
+                filter="url(#ribbonShadow)"
               />
 
-              {/* Upper Loop Ribbon (Letter P) */}
+              {/* Specular Highlight Sheen along top rim */}
               <path
-                d="M38 10 C68 10, 85 24, 85 42 C85 60, 68 74, 38 74 L38 56 C58 56, 67 48, 67 42 C67 36, 58 28, 38 28 Z"
-                fill="url(#netflixRibbonLoop)"
+                d="M 25 12 L 76 12"
+                stroke="url(#specularRim)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
               />
 
-              {/* Diagonal Play Triangle (PhimHub Play Symbol Embedded in Ribbon) */}
-              <polygon
-                points="46,28 64,42 46,56"
-                fill="#FFFFFF"
-                className="drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
-              />
-
-              {/* Diagonal Ribbon Overlay with Shadow Cast */}
+              {/* Specular Highlight Sheen on the outer loop crest */}
               <path
-                d="M38 10 L58 10 L38 48 L22 48 Z"
-                fill="url(#netflixRibbonCenter)"
-                opacity="0.95"
+                d="M 76 16 C 98 26, 108 38, 108 52"
+                stroke="rgba(255, 255, 255, 0.45)"
+                strokeWidth="1.2"
+                fill="none"
               />
             </svg>
           </div>
         </div>
 
-        {/* Cinematic Netflix-style Brand Title: PHIMHUB */}
+        {/* Cinematic Netflix-style Brand Title: PHIMHUB with Flawless Two-Tone Cinema Shading */}
         <div className="flex flex-col items-center">
-          <h1 className="font-display text-3xl sm:text-5xl md:text-6xl font-black tracking-[0.35em] sm:tracking-[0.45em] text-white uppercase drop-shadow-[0_4px_24px_rgba(229,9,20,0.7)] ml-3 sm:ml-4">
-            PHIM<span className="text-[#E50914] drop-shadow-[0_0_20px_#E50914]">HUB</span>
+          <h1 className="flex items-center text-4xl sm:text-6xl md:text-7xl font-black tracking-[0.16em] sm:tracking-[0.2em] uppercase leading-none drop-shadow-[0_8px_28px_rgba(0,0,0,0.9)]">
+            <span className="bg-gradient-to-b from-white via-[#F5F5F7] to-[#D1D1D6] bg-clip-text text-transparent drop-shadow-[0_2px_10px_rgba(255,255,255,0.3)]">
+              PHIM
+            </span>
+            <span className="bg-gradient-to-b from-[#FF4D5A] via-[#E50914] to-[#A8030B] bg-clip-text text-transparent drop-shadow-[0_0_26px_rgba(229,9,20,0.75)] drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+              HUB
+            </span>
           </h1>
 
-          <p className="mt-2 sm:mt-3 text-[10px] sm:text-xs font-bold tracking-[0.4em] uppercase text-white/50 ml-1">
-            CINEMATIC STREAMING
-          </p>
+          {/* Subtitle Tagline with Cinema Studio Wings */}
+          <div className="mt-3 sm:mt-4 flex items-center gap-3 sm:gap-4">
+            <div className="h-[1px] w-8 sm:w-12 bg-gradient-to-r from-transparent to-[#E50914]/85" />
+            <span className="text-[11px] sm:text-xs font-bold tracking-[0.45em] uppercase text-white/75">
+              CINEMATIC STREAMING
+            </span>
+            <div className="h-[1px] w-8 sm:w-12 bg-gradient-to-l from-transparent to-[#E50914]/85" />
+          </div>
+
+          {/* Anamorphic Horizon Floor Flare */}
+          <div className="mt-3.5 sm:mt-4.5 w-60 sm:w-80 md:w-96 h-[2px] bg-gradient-to-r from-transparent via-[#E50914]/70 to-transparent shadow-[0_0_16px_#E50914]" />
         </div>
       </div>
 
