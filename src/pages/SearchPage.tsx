@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MovieCard } from "@/components/MovieCard";
+import { SearchSuggestionsList } from "@/components/navbar/SearchSuggestionsList";
 import { RequestError } from "@/components/RequestState";
 import type { Movie } from "@/data/movies";
 import { useSyncSearch } from "@/hooks/useSyncSearch";
@@ -197,38 +198,18 @@ export function SearchPage() {
           )}
         </label>
         {showDropdown && suggestions.length > 0 && (
-          <ul
+          <SearchSuggestionsList
             id="movie-search-suggestions"
-            role="listbox"
-            aria-label="Gợi ý phim"
+            suggestions={suggestions}
+            activeSuggestionIndex={activeSuggestionIndex}
             onMouseEnter={() => setIsHoveringDropdown(true)}
             onMouseLeave={() => setIsHoveringDropdown(false)}
-            className="absolute inset-x-0 top-full z-40 mt-1 overflow-hidden rounded-xl border border-white/10 bg-[#181818] p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200"
-          >
-            {suggestions.map((movie, index) => (
-              <li key={movie.id || movie.slug} role="option" aria-selected={index === activeSuggestionIndex}>
-                <button
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    setShowDropdown(false);
-                    selectMovie(movie);
-                  }}
-                  className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                    index === activeSuggestionIndex ? "bg-white/15" : "hover:bg-white/10"
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-white">{movie.title}</span>
-                    <span className="block truncate text-xs text-white/50">
-                      {movie.originalTitle || movie.kind}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-white/50">{movie.year}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+            onSelect={(movie) => {
+              setShowDropdown(false);
+              selectMovie(movie);
+            }}
+            className="absolute inset-x-0 top-full z-40 mt-1"
+          />
         )}
       </form>
 

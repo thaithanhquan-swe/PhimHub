@@ -1,4 +1,5 @@
 export { SearchAutocomplete } from "./SearchAutocomplete";
+export { SearchSuggestionsList } from "./SearchSuggestionsList";
 export { MobileNavDrawer } from "./MobileNavDrawer";
 export { MobileBottomNav } from "./MobileBottomNav";
 export {
