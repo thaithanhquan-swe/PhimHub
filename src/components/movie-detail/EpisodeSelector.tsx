@@ -52,20 +52,20 @@ export function EpisodeSelector({
         </div>
 
         {/* Batch download actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {totalEpisodes > 1 && (
             <>
               {isBatchActive ? (
-                <div className="flex items-center gap-2 rounded-md bg-primary/10 border border-primary/20 px-2.5 py-1">
+                <div className="flex flex-wrap items-center gap-2 rounded-md bg-primary/10 border border-primary/20 px-2.5 py-1">
                   <span className="flex items-center gap-1.5 text-xs text-primary font-medium">
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin shrink-0" />
                     <span>Đang tải: {downloadedCount}/{totalEpisodes} tập</span>
                   </span>
                   {onCancelBatchDownload && (
                     <button
                       type="button"
                       onClick={onCancelBatchDownload}
-                      className="text-[11px] font-bold text-red-400 hover:text-red-300 underline underline-offset-2 ml-1"
+                      className="text-[11px] font-bold text-red-400 hover:text-red-300 underline underline-offset-2 ml-1 shrink-0"
                     >
                       Hủy
                     </button>
@@ -76,16 +76,16 @@ export function EpisodeSelector({
                   type="button"
                   onClick={onStartBatchDownload}
                   disabled={!isOnline}
-                  className="inline-flex items-center gap-1.5 rounded bg-white/10 hover:bg-primary px-2.5 py-1 text-xs font-semibold text-white transition-all active:scale-95 disabled:opacity-40"
+                  className="inline-flex items-center gap-1.5 rounded bg-white/10 hover:bg-primary px-2.5 py-1 text-xs font-semibold text-white transition-all active:scale-95 disabled:opacity-40 shrink-0"
                   title="Tải toàn bộ các tập còn lại về xem offline"
                 >
-                  <Download className="size-3" />
+                  <Download className="size-3 shrink-0" />
                   <span>Tải cả bộ ({remainingCount} tập)</span>
                 </button>
               ) : null}
             </>
           )}
-          <span className="text-xs text-white/50">{currentServer.server_name}</span>
+          <span className="text-xs text-white/50 truncate max-w-full">{currentServer.server_name}</span>
         </div>
       </div>
 

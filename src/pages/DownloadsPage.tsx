@@ -195,21 +195,21 @@ export function DownloadsPage() {
   }, [activeDownload, currentMovieCompletedEpisodes]);
 
   return (
-    <main className="min-h-screen pb-28 pt-20 sm:pt-24 px-4 sm:px-[4.5%] max-w-6xl mx-auto">
+    <main className="min-h-screen pb-14 sm:pb-20 pt-[calc(4.75rem+env(safe-area-inset-top,0px))] sm:pt-24 px-3.5 sm:px-[4.5%] max-w-6xl mx-auto overflow-x-clip">
       {/* Header Breadcrumb & Title */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
-        <div>
+      <div className="mb-5 sm:mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 border-b border-white/10 pb-4">
+        <div className="min-w-0 flex-1">
           <Link
             to="/"
             className="mb-2 inline-flex items-center gap-1.5 text-xs text-white/60 hover:text-white transition-colors"
           >
-            <ArrowLeft className="size-3.5" /> Về trang chủ
+            <ArrowLeft className="size-3.5 shrink-0" /> Về trang chủ
           </Link>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold flex items-center gap-2.5">
-            <Download className="size-6 text-primary" />
+          <h1 className="font-display text-xl sm:text-3xl font-bold flex items-center gap-2 sm:gap-2.5 leading-tight">
+            <Download className="size-5 sm:size-6 text-primary shrink-0" />
             <span>Phim Đã Tải (Xem Offline)</span>
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-white/60">
+          <p className="mt-1 text-xs sm:text-sm text-white/60 leading-relaxed">
             Xem phim mọi lúc mọi nơi ngay cả khi mất mạng hoặc không có Wi-Fi (0 MB 3G/4G).
           </p>
         </div>
@@ -217,7 +217,7 @@ export function DownloadsPage() {
         {/* Network Status Badge */}
         <div
           className={cn(
-            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold border",
+            "inline-flex w-fit shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold border self-start sm:self-auto",
             isOnline
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : "border-amber-500/30 bg-amber-500/10 text-amber-300",
@@ -225,12 +225,12 @@ export function DownloadsPage() {
         >
           {isOnline ? (
             <>
-              <Wifi className="size-3.5 text-emerald-400" />
+              <Wifi className="size-3.5 shrink-0 text-emerald-400" />
               <span>Đang có kết nối mạng</span>
             </>
           ) : (
             <>
-              <WifiOff className="size-3.5 text-amber-400" />
+              <WifiOff className="size-3.5 shrink-0 text-amber-400" />
               <span>Chế độ ngoại tuyến (Không có Wi-Fi)</span>
             </>
           )}
@@ -239,9 +239,9 @@ export function DownloadsPage() {
 
       {/* Offline Notice Banner */}
       {!isOnline && (
-        <div className="mb-6 flex items-start sm:items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200 shadow-lg">
+        <div className="mb-6 flex items-start sm:items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 text-amber-200 shadow-lg">
           <WifiOff className="size-5 shrink-0 text-amber-400 mt-0.5 sm:mt-0" />
-          <div className="flex-1 text-xs sm:text-sm leading-relaxed">
+          <div className="min-w-0 flex-1 text-xs sm:text-sm leading-relaxed">
             <span className="font-bold">Bạn đang ngoại tuyến! </span>
             Các phim đã tải được lưu trực tiếp trên thiết bị này. Bạn có thể mở xem bình thường mà không tiêu tốn 1 KB data nào.
           </div>
@@ -249,15 +249,15 @@ export function DownloadsPage() {
       )}
 
       {/* Storage Meter Bar */}
-      <div className="mb-8 rounded-xl border border-white/10 bg-[#161618] p-4 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-9 place-items-center rounded-lg bg-primary/20 text-primary">
+      <div className="mb-6 sm:mb-8 rounded-xl border border-white/10 bg-[#161618] p-3.5 sm:p-4 text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/20 text-primary">
               <HardDrive className="size-4.5" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-bold text-white text-sm">Bộ nhớ thiết bị</p>
-              <p className="text-white/60 text-[11px] sm:text-xs">
+              <p className="mt-0.5 text-white/60 text-[11px] sm:text-xs leading-relaxed break-words">
                 PhimHub đã dùng: <span className="font-semibold text-primary">{formatBytes(storage.usedBytes)}</span>
                 {storage.availableBytes > 0 && (
                   <> · Bộ nhớ còn trống: <span className="font-semibold text-white">{formatBytes(storage.availableBytes)}</span></>
@@ -266,8 +266,8 @@ export function DownloadsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80">
+          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80 whitespace-nowrap">
               {isLoading ? (
                 <span className="flex items-center gap-1.5 text-white/60">
                   <Loader2 className="size-3 animate-spin text-primary" /> Đang kiểm tra...
@@ -284,16 +284,16 @@ export function DownloadsPage() {
       {activeDownload && (
         <section
           ref={playerSectionRef}
-          className="mb-10 scroll-mt-24 rounded-2xl border border-primary/40 bg-black/60 p-3 sm:p-5 shadow-2xl backdrop-blur-md"
+          className="mb-8 sm:mb-10 scroll-mt-24 rounded-2xl border border-primary/40 bg-[#121215]/95 p-3 sm:p-5 shadow-2xl"
         >
-          <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/10 pb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <Film className="size-4 text-primary shrink-0" />
-              <div className="truncate">
-                <h2 className="text-sm sm:text-base font-bold text-white truncate">
+          <div className="mb-3 flex items-start sm:items-center justify-between gap-2.5 border-b border-white/10 pb-3">
+            <div className="flex items-start sm:items-center gap-2 min-w-0 flex-1">
+              <Film className="size-4 text-primary shrink-0 mt-0.5 sm:mt-0" />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm sm:text-base font-bold text-white line-clamp-1">
                   Đang phát: {activeDownload.movieTitle}
                 </h2>
-                <p className="text-xs text-white/60">
+                <p className="mt-0.5 text-[11px] sm:text-xs text-white/60 line-clamp-2 sm:line-clamp-1">
                   {activeDownload.episodeName} · {activeDownload.serverName} · Bản ngoại tuyến ({formatBytes(activeDownload.totalBytes)})
                 </p>
               </div>
@@ -304,12 +304,13 @@ export function DownloadsPage() {
               onClick={() => setActiveDownload(null)}
               className="grid size-8 place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors shrink-0"
               title="Đóng trình phát"
+              aria-label="Đóng trình phát"
             >
               <X className="size-4" />
             </button>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl bg-black">
+          <div className="relative">
             <VideoPlayer
               key={activeDownload.id}
               m3u8Url={`offline://${activeDownload.id}`}
@@ -330,11 +331,25 @@ export function DownloadsPage() {
 
           {/* Quick episode switch row if this movie has multiple completed episodes */}
           {currentMovieCompletedEpisodes.length > 1 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
-              <span className="text-xs font-semibold text-white/70 flex items-center gap-1">
-                <Layers className="size-3 text-primary" /> Chọn tập xem:
-              </span>
-              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            <div className="mt-3 flex flex-col gap-2.5 border-t border-white/10 pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                  <Layers className="size-3.5 text-primary shrink-0" /> Chọn tập xem:
+                </span>
+
+                {nextEpisodeInSeries && (
+                  <button
+                    type="button"
+                    onClick={() => handlePlay(nextEpisodeInSeries)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 text-xs font-bold transition-all active:scale-95 shrink-0"
+                  >
+                    <span>Tập tiếp ({nextEpisodeInSeries.episodeName})</span>
+                    <SkipForward className="size-3 shrink-0" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
                 {currentMovieCompletedEpisodes.map((ep) => {
                   const isCurrent = ep.id === activeDownload.id;
                   return (
@@ -343,7 +358,7 @@ export function DownloadsPage() {
                       type="button"
                       onClick={() => handlePlay(ep)}
                       className={cn(
-                        "rounded px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
+                        "min-h-[32px] rounded-md px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                         isCurrent
                           ? "bg-primary text-white shadow-sm shadow-primary/30"
                           : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
@@ -354,17 +369,6 @@ export function DownloadsPage() {
                   );
                 })}
               </div>
-
-              {nextEpisodeInSeries && (
-                <button
-                  type="button"
-                  onClick={() => handlePlay(nextEpisodeInSeries)}
-                  className="ml-auto inline-flex items-center gap-1.5 rounded bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/30 px-3 py-1 text-xs font-bold transition-all active:scale-95"
-                >
-                  <span>Tập tiếp ({nextEpisodeInSeries.episodeName})</span>
-                  <SkipForward className="size-3" />
-                </button>
-              )}
             </div>
           )}
         </section>
@@ -373,11 +377,11 @@ export function DownloadsPage() {
       {/* In-Progress Downloads (Grouped by Movie) */}
       {inProgressGroups.length > 0 && (
         <div className="mb-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">
+          <h2 className="mb-3 text-xs sm:text-sm font-bold uppercase tracking-wider text-white/60">
             Đang tải xuống ({inProgressDownloads.length} tập)
           </h2>
 
-          <div className="grid gap-3.5 sm:grid-cols-2">
+          <div className="grid gap-3 sm:gap-3.5 grid-cols-1 md:grid-cols-2">
             {inProgressGroups.map((group) => {
               const downloading = group.items.find((i) => i.status === "downloading");
               const queued = group.items.filter((i) => i.status === "queued");
@@ -386,10 +390,10 @@ export function DownloadsPage() {
               return (
                 <div
                   key={group.movieSlug}
-                  className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm"
+                  className="min-w-0 flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3.5 sm:p-4 shadow-sm"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-bold text-sm text-white truncate">{group.movieTitle}</h3>
                       <p className="text-xs text-white/60">
                         {group.items.length} tập đang xử lý ({queued.length} trong hàng đợi)
@@ -399,7 +403,7 @@ export function DownloadsPage() {
                     <button
                       type="button"
                       onClick={() => handleCancelGroupBatch(group.movieSlug, group.movieTitle, group.items.length)}
-                      className="text-xs font-bold text-red-400 hover:text-red-300 underline underline-offset-2 shrink-0"
+                      className="text-xs font-bold text-red-400 hover:text-red-300 underline underline-offset-2 shrink-0 py-0.5"
                     >
                       Hủy cả bộ
                     </button>
@@ -407,12 +411,12 @@ export function DownloadsPage() {
 
                   {/* Active downloading episode progress */}
                   {downloading ? (
-                    <div className="rounded-lg bg-black/40 p-2.5 flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between text-[11px] text-white/80">
-                        <span className="font-semibold text-white truncate">
+                    <div className="rounded-lg bg-black/40 p-2.5 flex flex-col gap-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-white/80">
+                        <span className="font-semibold text-white truncate min-w-0">
                           Đang tải: {downloading.episodeName}
                         </span>
-                        <span className="font-bold text-primary shrink-0 ml-2">
+                        <span className="font-bold text-primary shrink-0">
                           {downloading.progress}% ({downloading.downloadedSegments}/{downloading.totalSegments} đoạn)
                         </span>
                       </div>
@@ -422,33 +426,33 @@ export function DownloadsPage() {
                           style={{ width: `${downloading.progress}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-white/50">
+                      <div className="flex items-center justify-between gap-2 text-[10px] text-white/50">
                         <span className="flex items-center gap-1 text-primary">
-                          <Loader2 className="size-3 animate-spin" />
-                          Đang lưu vào máy
+                          <Loader2 className="size-3 animate-spin shrink-0" />
+                          <span>Đang lưu vào máy</span>
                         </span>
-                        <span>{formatBytes(downloading.totalBytes)}</span>
+                        <span className="shrink-0">{formatBytes(downloading.totalBytes)}</span>
                       </div>
                     </div>
                   ) : queued.length > 0 ? (
-                    <div className="flex items-center gap-1.5 rounded-lg bg-black/30 p-2.5 text-xs text-amber-300">
+                    <div className="flex items-center gap-1.5 rounded-lg bg-black/30 p-2.5 text-xs text-amber-300 min-w-0">
                       <Clock className="size-3.5 shrink-0" />
-                      <span>Đang chờ lượt tải ({queued[0].episodeName} tiếp theo...)</span>
+                      <span className="truncate">Đang chờ lượt tải ({queued[0].episodeName} tiếp theo...)</span>
                     </div>
                   ) : null}
 
                   {/* Error items retry */}
                   {errors.length > 0 && (
-                    <div className="flex items-center justify-between text-xs text-red-300 border-t border-white/5 pt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-red-300 border-t border-white/5 pt-2">
                       <span className="flex items-center gap-1">
                         <AlertCircle className="size-3.5 text-red-400 shrink-0" />
-                        {errors.length} tập gặp lỗi
+                        <span>{errors.length} tập gặp lỗi</span>
                       </span>
                       <button
                         type="button"
                         onClick={() => handleRetry(errors[0])}
                         disabled={!isOnline}
-                        className="inline-flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-200 hover:bg-red-500/30 active:scale-95 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/30 active:scale-95 disabled:opacity-50 shrink-0"
                       >
                         <RotateCcw className="size-3" /> Thử lại
                       </button>
@@ -463,7 +467,7 @@ export function DownloadsPage() {
 
       {/* Completed Downloads (Grouped by Movie) */}
       <div>
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">
+        <h2 className="mb-3 text-xs sm:text-sm font-bold uppercase tracking-wider text-white/60">
           Phim đã tải xong ({completedGroups.length} bộ · {completedDownloads.length} tập)
         </h2>
 
@@ -473,11 +477,11 @@ export function DownloadsPage() {
             <div className="h-28 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
           </div>
         ) : completedGroups.length === 0 ? (
-          <div className="grid place-items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] py-16 px-4 text-center">
-            <div className="grid size-16 place-items-center rounded-full bg-white/5 text-white/40 mb-4">
-              <Download className="size-8" />
+          <div className="grid place-items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] py-12 sm:py-16 px-4 text-center">
+            <div className="grid size-14 sm:size-16 place-items-center rounded-full bg-white/5 text-white/40 mb-4">
+              <Download className="size-7 sm:size-8" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Chưa có tập phim nào được tải về</h3>
+            <h3 className="text-base sm:text-lg font-bold text-white mb-2">Chưa có tập phim nào được tải về</h3>
             <p className="max-w-md text-xs sm:text-sm text-white/60 mb-6 leading-relaxed">
               Bạn có thể vào bất kỳ bộ phim nào trên PhimHub và bấm nút{" "}
               <strong className="text-white">"Tải cả bộ"</strong> hoặc{" "}
@@ -491,7 +495,7 @@ export function DownloadsPage() {
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3.5 sm:gap-4">
             {completedGroups.map((group) => {
               const isExpanded = expandedMovies[group.movieSlug] ?? (group.episodes.length > 1 ? false : true);
               const firstEpisode = group.episodes[0];
@@ -508,37 +512,44 @@ export function DownloadsPage() {
                   )}
                 >
                   {/* Movie Summary Row */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-                    <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4">
+                    <div className="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
                       {/* Poster thumbnail */}
-                      <div className="relative aspect-[2/3] w-16 sm:w-20 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-sm">
-                        <img
-                          src={group.posterDataUrl || group.posterUrl}
-                          alt={group.movieTitle}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-black/20" />
+                      <div className="relative aspect-[2/3] w-16 sm:w-20 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-sm border border-white/5">
+                        {group.posterDataUrl || group.posterUrl ? (
+                          <img
+                            src={group.posterDataUrl || group.posterUrl}
+                            alt={group.movieTitle}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center text-white/30">
+                            <Film className="size-6" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/15 pointer-events-none" />
                       </div>
 
                       {/* Movie Info */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
-                            <CheckCircle2 className="size-2.5" /> Sẵn sàng offline
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 whitespace-nowrap">
+                            <CheckCircle2 className="size-2.5 shrink-0" /> Sẵn sàng offline
                           </span>
-                          <span className="text-[11px] text-white/50">
+                          <span className="text-[11px] text-white/50 whitespace-nowrap">
                             {formatBytes(group.totalBytes)}
                           </span>
                         </div>
 
-                        <h3 className="mt-1 font-bold text-base sm:text-lg text-white truncate">
+                        <h3 className="mt-1.5 font-bold text-sm sm:text-lg text-white line-clamp-2 sm:truncate leading-snug">
                           {group.movieTitle}
                         </h3>
 
-                        <p className="mt-0.5 text-xs text-white/60">
-                          {group.serverName} ·{" "}
-                          <span className="font-semibold text-white/90">
+                        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-white/60">
+                          <span className="truncate max-w-full">{group.serverName}</span>
+                          <span>·</span>
+                          <span className="font-semibold text-white/90 whitespace-nowrap">
                             {group.episodes.length} tập đã tải
                           </span>
                         </p>
@@ -546,13 +557,13 @@ export function DownloadsPage() {
                     </div>
 
                     {/* Group Action Buttons */}
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto shrink-0 pt-2.5 sm:pt-0 border-t border-white/5 sm:border-t-0">
                       <button
                         type="button"
                         onClick={() => handlePlay(firstEpisode)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-white text-black hover:bg-white/90 px-3.5 py-2 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg bg-white text-black hover:bg-white/90 px-3.5 py-2 min-h-[38px] text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
                       >
-                        <Play className="size-3.5 fill-current" />
+                        <Play className="size-3.5 fill-current shrink-0" />
                         <span>Xem {group.episodes.length > 1 ? "tập 1" : "ngay"}</span>
                       </button>
 
@@ -560,13 +571,13 @@ export function DownloadsPage() {
                         <button
                           type="button"
                           onClick={() => toggleExpand(group.movieSlug)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 min-h-[38px] text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
                         >
                           <span>{group.episodes.length} tập</span>
                           {isExpanded ? (
-                            <ChevronUp className="size-3.5" />
+                            <ChevronUp className="size-3.5 shrink-0" />
                           ) : (
-                            <ChevronDown className="size-3.5" />
+                            <ChevronDown className="size-3.5 shrink-0" />
                           )}
                         </button>
                       )}
@@ -575,7 +586,8 @@ export function DownloadsPage() {
                         type="button"
                         onClick={() => handleDeleteGroup(group)}
                         title="Xóa toàn bộ các tập của phim này để giải phóng dung lượng"
-                        className="grid size-8 place-items-center rounded-lg bg-white/5 text-white/60 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+                        aria-label={`Xóa toàn bộ ${group.movieTitle}`}
+                        className="grid size-[38px] shrink-0 place-items-center rounded-lg bg-white/5 text-white/60 hover:bg-red-500/20 hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -584,18 +596,18 @@ export function DownloadsPage() {
 
                   {/* Expanded Episode List / Grid */}
                   {isExpanded && group.episodes.length > 1 && (
-                    <div className="mt-4 border-t border-white/10 pt-3.5">
+                    <div className="mt-3.5 sm:mt-4 border-t border-white/10 pt-3.5">
                       <div className="mb-2 text-xs font-semibold text-white/60">
                         Chọn tập để phát hoặc xóa từng tập:
                       </div>
-                      <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                      <div className="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                         {group.episodes.map((ep) => {
                           const isEpPlaying = activeDownload?.id === ep.id;
                           return (
                             <div
                               key={ep.id}
                               className={cn(
-                                "flex items-center justify-between rounded-lg border p-2 text-xs transition-all",
+                                "min-w-0 overflow-hidden flex items-center justify-between gap-1.5 rounded-lg border p-2 text-xs transition-all",
                                 isEpPlaying
                                   ? "border-primary bg-primary/20 text-white shadow-sm"
                                   : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
@@ -604,17 +616,18 @@ export function DownloadsPage() {
                               <button
                                 type="button"
                                 onClick={() => handlePlay(ep)}
-                                className="flex-1 text-left min-w-0 pr-1"
+                                className="flex-1 text-left min-w-0"
                               >
                                 <p className="font-bold truncate">{ep.episodeName}</p>
-                                <p className="text-[10px] text-white/50">{formatBytes(ep.totalBytes)}</p>
+                                <p className="text-[10px] text-white/50 truncate">{formatBytes(ep.totalBytes)}</p>
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSingle(ep)}
                                 title={`Xóa ${ep.episodeName}`}
-                                className="grid size-6 place-items-center rounded text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors shrink-0"
+                                aria-label={`Xóa ${ep.episodeName}`}
+                                className="grid size-7 place-items-center rounded text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors shrink-0"
                               >
                                 <Trash2 className="size-3" />
                               </button>

@@ -151,10 +151,10 @@ export function EpisodeDownloadButton({
 
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/10 p-3 sm:p-3.5 text-xs shadow-md">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 font-bold text-primary">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-bold text-primary min-w-0">
             <Loader2 className="size-4 animate-spin shrink-0" />
-            <span>
+            <span className="break-words">
               Đang tải cả bộ phim: {completedEpisodesCount}/{totalEpisodesCount} tập xong
             </span>
           </div>
@@ -169,12 +169,12 @@ export function EpisodeDownloadButton({
 
         {/* Detailed active downloading episode */}
         {downloadingItem && (
-          <div className="flex flex-col gap-1.5 rounded-lg bg-black/30 p-2.5">
-            <div className="flex items-center justify-between text-[11px] text-white/80">
-              <span className="font-semibold text-white truncate">
+          <div className="flex flex-col gap-1.5 rounded-lg bg-black/30 p-2.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-white/80">
+              <span className="font-semibold text-white truncate min-w-0">
                 Đang tải: {downloadingItem.episodeName.toLowerCase().includes("tập") ? downloadingItem.episodeName : `Tập ${downloadingItem.episodeName}`}
               </span>
-              <span className="font-bold text-primary shrink-0 ml-2">
+              <span className="font-bold text-primary shrink-0">
                 {downloadingItem.progress}% ({downloadingItem.downloadedSegments}/{downloadingItem.totalSegments} đoạn)
               </span>
             </div>
@@ -184,27 +184,27 @@ export function EpisodeDownloadButton({
                 style={{ width: `${downloadingItem.progress}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[10px] text-white/50">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-white/50">
               <span>Đang lưu vào IndexedDB</span>
-              <span>{formatBytes(downloadingItem.totalBytes)}</span>
+              <span className="shrink-0">{formatBytes(downloadingItem.totalBytes)}</span>
             </div>
           </div>
         )}
 
         {/* Status of the currently selected episode if different */}
-        <div className="flex items-center justify-between text-[11px] text-white/60 pt-0.5 border-t border-white/10 mt-0.5">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60 pt-1.5 border-t border-white/10 mt-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             {isCurrentDone ? (
               <span className="text-emerald-400 flex items-center gap-1 font-medium">
-                <CheckCircle2 className="size-3" /> Tập đang xem đã tải xong
+                <CheckCircle2 className="size-3 shrink-0" /> Tập đang xem đã tải xong
               </span>
             ) : isCurrentActive ? (
               <span className="text-primary flex items-center gap-1 font-medium">
-                <Loader2 className="size-3 animate-spin" /> Tập đang xem đang được tải về
+                <Loader2 className="size-3 animate-spin shrink-0" /> Tập đang xem đang được tải về
               </span>
             ) : isCurrentQueued ? (
               <span className="text-amber-300 flex items-center gap-1 font-medium">
-                <Clock className="size-3" /> Tập đang xem đang chờ tải
+                <Clock className="size-3 shrink-0" /> Tập đang xem đang chờ tải
               </span>
             ) : (
               <span>Hàng đợi: {activeDownloads.length} tập đang xử lý</span>
@@ -216,7 +216,7 @@ export function EpisodeDownloadButton({
               type="button"
               onClick={() => onToggleOfflinePlayback(!isPlayingOffline)}
               className={cn(
-                "rounded px-2 py-0.5 text-[11px] font-bold transition-all shadow-sm active:scale-95",
+                "rounded px-2.5 py-1 text-[11px] font-bold transition-all shadow-sm active:scale-95 shrink-0",
                 isPlayingOffline
                   ? "bg-emerald-600 text-white hover:bg-emerald-500"
                   : "bg-white/15 text-white hover:bg-white/25",
@@ -236,10 +236,10 @@ export function EpisodeDownloadButton({
   if (download && download.status === "downloading") {
     return (
       <div className="flex flex-col gap-1.5 rounded-lg border border-primary/30 bg-primary/10 p-2.5 sm:p-3 text-xs">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 font-semibold text-primary">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 font-semibold text-primary min-w-0">
             <Loader2 className="size-4 animate-spin shrink-0" />
-            <span>
+            <span className="break-words">
               Đang tải về xem offline: {download.progress}% ({download.downloadedSegments}/{download.totalSegments} đoạn)
             </span>
           </div>
@@ -257,9 +257,9 @@ export function EpisodeDownloadButton({
             style={{ width: `${download.progress}%` }}
           />
         </div>
-        <div className="flex items-center justify-between text-[11px] text-white/60">
-          <span>{currentEpisode.name.toLowerCase().includes("tập") ? currentEpisode.name : `Tập ${currentEpisode.name}`}</span>
-          <span>{formatBytes(download.totalBytes)}</span>
+        <div className="flex items-center justify-between gap-2 text-[11px] text-white/60">
+          <span className="truncate">{currentEpisode.name.toLowerCase().includes("tập") ? currentEpisode.name : `Tập ${currentEpisode.name}`}</span>
+          <span className="shrink-0">{formatBytes(download.totalBytes)}</span>
         </div>
       </div>
     );
@@ -271,22 +271,22 @@ export function EpisodeDownloadButton({
   if (download && download.status === "completed") {
     return (
       <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 sm:p-3 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
-            <div>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-start sm:items-center gap-2 min-w-0">
+            <CheckCircle2 className="size-4 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
+            <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="font-semibold text-emerald-300">Đã lưu vào máy (Xem ngoại tuyến)</span>
-              <span className="ml-2 text-[11px] text-white/60">({formatBytes(download.totalBytes)})</span>
+              <span className="text-[11px] text-white/60">({formatBytes(download.totalBytes)})</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
             {onToggleOfflinePlayback && (
               <button
                 type="button"
                 onClick={() => onToggleOfflinePlayback(!isPlayingOffline)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-xs font-bold transition-all shadow-sm active:scale-95",
+                  "flex-1 sm:flex-initial rounded px-2.5 py-1.5 sm:py-1 text-xs font-bold transition-all shadow-sm active:scale-95 text-center",
                   isPlayingOffline
                     ? "bg-emerald-600 text-white hover:bg-emerald-500"
                     : "bg-white/15 text-white hover:bg-white/25",
@@ -300,7 +300,7 @@ export function EpisodeDownloadButton({
               type="button"
               onClick={handleDeleteSingle}
               title="Xóa bản tải offline để giải phóng dung lượng"
-              className="grid size-7 place-items-center rounded bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+              className="grid size-8 sm:size-7 shrink-0 place-items-center rounded bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-400 transition-colors"
             >
               <Trash2 className="size-3.5" />
             </button>
@@ -309,13 +309,13 @@ export function EpisodeDownloadButton({
 
         {/* Offer batch download for remaining episodes if series */}
         {isMultiEpisode && remainingEpisodesCount > 0 && (
-          <div className="flex items-center justify-between pt-2 border-t border-emerald-500/20 text-[11px] text-emerald-200/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-emerald-500/20 text-[11px] text-emerald-200/80">
             <span>Còn {remainingEpisodesCount} tập khác chưa tải về máy.</span>
             <button
               type="button"
               onClick={handleStartBatch}
               disabled={isStartingBatch || !isOnline}
-              className="inline-flex items-center gap-1 font-bold text-white bg-emerald-600/40 hover:bg-emerald-600/60 border border-emerald-500/40 rounded px-2.5 py-1 transition-all active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-1 font-bold text-white bg-emerald-600/40 hover:bg-emerald-600/60 border border-emerald-500/40 rounded px-2.5 py-1 transition-all active:scale-95 disabled:opacity-50 shrink-0"
             >
               {isStartingBatch ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -335,24 +335,24 @@ export function EpisodeDownloadButton({
   // ----------------------------------------------------------------------
   if (download && download.status === "error") {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 sm:p-3 text-xs text-red-200">
-        <div className="flex items-center gap-1.5">
-          <AlertCircle className="size-4 text-red-400 shrink-0" />
-          <span>Lỗi tải: {download.error || "Không thể tải đoạn video"}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 sm:p-3 text-xs text-red-200">
+        <div className="flex items-start sm:items-center gap-1.5 min-w-0 flex-1">
+          <AlertCircle className="size-4 text-red-400 shrink-0 mt-0.5 sm:mt-0" />
+          <span className="break-words">Lỗi tải: {download.error || "Không thể tải đoạn video"}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={handleStartSingle}
             disabled={!isOnline}
-            className="rounded bg-red-500/20 px-2 py-1 font-semibold text-red-300 hover:bg-red-500/30 active:scale-95 disabled:opacity-50"
+            className="rounded bg-red-500/20 px-2.5 py-1 font-semibold text-red-300 hover:bg-red-500/30 active:scale-95 disabled:opacity-50"
           >
             Thử lại
           </button>
           <button
             type="button"
             onClick={() => cancelDownload(download.id)}
-            className="text-[11px] text-white/50 hover:text-white"
+            className="px-1.5 py-1 text-[11px] text-white/50 hover:text-white"
           >
             Xóa
           </button>
@@ -365,20 +365,20 @@ export function EpisodeDownloadButton({
   // SCENARIO 5: Default download buttons (Single & Batch)
   // ----------------------------------------------------------------------
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs">
-      <div className="flex items-center gap-2 text-white/70">
-        <HardDrive className="size-4 text-primary shrink-0" />
+    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs">
+      <div className="flex items-start sm:items-center gap-2 text-white/70 min-w-0">
+        <HardDrive className="size-4 text-primary shrink-0 mt-0.5 sm:mt-0" />
         <span>Xem khi không có Wi-Fi? Tải về máy để xem không tốn 3G/4G.</span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
         {/* Button to download single episode */}
         <button
           type="button"
           onClick={handleStartSingle}
           disabled={isStartingSingle || !isOnline}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm shrink-0",
+            "flex-1 sm:flex-initial justify-center inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 min-h-[34px] text-xs font-bold transition-all active:scale-95 shadow-sm shrink-0",
             isOnline
               ? "bg-white/10 hover:bg-white/20 text-white border border-white/15"
               : "bg-white/5 text-white/40 cursor-not-allowed",
@@ -405,7 +405,7 @@ export function EpisodeDownloadButton({
             onClick={handleStartBatch}
             disabled={isStartingBatch || !isOnline || remainingEpisodesCount === 0}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm shrink-0",
+              "flex-1 sm:flex-initial justify-center inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 min-h-[34px] text-xs font-bold transition-all active:scale-95 shadow-sm shrink-0",
               isOnline && remainingEpisodesCount > 0
                 ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25 shadow-md"
                 : "bg-white/5 text-white/40 cursor-not-allowed",
