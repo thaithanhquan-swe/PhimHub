@@ -349,4 +349,20 @@ describe("AdBlock Playlist Filter", () => {
       expect(res.hasAd).toBe(true);
     });
   });
+
+  it("never returns an empty 0-segment playlist when all segments match ad patterns", () => {
+    const raw = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      "#EXTINF:4.0,",
+      "v1/stream123/seg_001.ts",
+      "#EXTINF:4.0,",
+      "v1/stream123/seg_002.ts",
+      "#EXT-X-ENDLIST",
+    ].join("\n");
+
+    const cleaned = cleanHlsPlaylist(raw);
+    expect(cleaned).toContain("seg_001.ts");
+    expect(cleaned).toContain("seg_002.ts");
+  });
 });

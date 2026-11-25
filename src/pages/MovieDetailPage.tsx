@@ -280,7 +280,12 @@ export function MovieDetailPage() {
   }
 
   const isSaved = savedMovies.some((item) => item.id === movie.id || item.slug === movie.slug);
-  const hasEpisodes = Boolean(movie.episodes && movie.episodes.length > 0 && currentEpisode);
+  const hasEpisodes = Boolean(
+    movie.episodes &&
+      movie.episodes.length > 0 &&
+      currentEpisode &&
+      (currentEpisode.m3u8 || currentEpisode.embed),
+  );
   const hasNextEpisode = Boolean(
     currentServer &&
     currentServer.items &&
@@ -584,12 +589,28 @@ export function MovieDetailPage() {
               </div>
             </div>
           ) : (
-            <div className="flex aspect-video w-full flex-col items-center justify-center rounded-md bg-[#1d1d1d] text-center text-white/60">
+            <div className="flex aspect-video w-full flex-col items-center justify-center rounded-md bg-[#1d1d1d] px-4 text-center text-white/60">
               <Film className="mb-2 size-10 text-white/40" />
-              <p className="text-sm font-medium">Tập phim đang được cập nhật</p>
-              <p className="mt-1 text-xs text-white/40">Vui lòng quay lại sau ít phút.</p>
-              <div className="mt-3">
+              <p className="text-sm font-medium text-white/85">
+                {movie.currentEpisode?.toLowerCase().includes("trailer")
+                  ? "Phim đang ở trạng thái Trailer (chưa có tập phát)"
+                  : "Tập phim đang được cập nhật"}
+              </p>
+              <p className="mt-1 text-xs text-white/45">
+                Nguồn phim hiện chưa có đường truyền phát. Vui lòng quay lại sau hoặc thử đổi nguồn API bên dưới.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 <ProviderStatusBadge />
+                {movie.trailerUrl && (
+                  <a
+                    href={movie.trailerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-primary/90 px-3 py-1 text-[11px] font-semibold text-white hover:bg-primary transition-colors"
+                  >
+                    Xem Trailer
+                  </a>
+                )}
               </div>
             </div>
           )}

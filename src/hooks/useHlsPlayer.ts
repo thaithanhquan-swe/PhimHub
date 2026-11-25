@@ -50,18 +50,19 @@ export function useHlsPlayer({
   onNextEpisodeRef.current = onNextEpisode;
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const isPlayingRef = useRef(isPlaying);
-  isPlayingRef.current = isPlaying;
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const isLoadingRef = useRef(isLoading);
+  isLoadingRef.current = isLoading;
   const [error, setError] = useState<string | null>(null);
   const [qualities, setQualities] = useState<QualityOption[]>([AUTO_QUALITY]);
   const [currentQualityIndex, setCurrentQualityIndex] = useState(-1);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [adInfo, setAdInfo] = useState<{ hasAd: boolean; adDuration: number }>({
     hasAd: false,
     adDuration: 0,
@@ -123,21 +124,43 @@ export function useHlsPlayer({
       hlsRef.current = null;
     }
 
-    const timeoutTimer = window.setTimeout(() => {
-      const v = videoRef.current;
-      const hls = hlsRef.current;
-      const hasParsedLevels = Boolean(hls && hls.levels && hls.levels.length > 0);
-      const hasLoadedFrames = Boolean(v && v.readyState > 0);
+    let fallbackTriggered = false;
+    let timeoutTimer: number | null = null;
+    let nativeAbortController: AbortController | null = null;
 
-      if (v && !hasLoadedFrames && !isPlayingRef.current && !hasParsedLevels) {
-        console.warn("HLS load timed out after 18s, falling back to embed player");
-        if (embedUrl && !m3u8Url.startsWith("offline://")) {
-          onFallbackToEmbedRef.current();
-        } else {
-          setIsLoading(false);
-        }
+    const fallbackOrShowError = (message: string) => {
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
+      if (timeoutTimer !== null) {
+        window.clearTimeout(timeoutTimer);
+        timeoutTimer = null;
       }
-    }, 18000);
+      if (nativeAbortController) {
+        nativeAbortController.abort();
+      }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      if (embedUrl && !m3u8Url.startsWith("offline://")) {
+        onFallbackToEmbedRef.current();
+      } else {
+        setError(message);
+        setIsLoading(false);
+      }
+    };
+
+    if (!m3u8Url.startsWith("offline://")) {
+      timeoutTimer = window.setTimeout(() => {
+        const v = videoRef.current;
+        const hasLoadedFrames = Boolean(v && v.readyState >= 2);
+
+        if (v && !hasLoadedFrames && isLoadingRef.current) {
+          console.warn("HLS load timed out after 12s, falling back to embed player");
+          fallbackOrShowError("Luồng phim phản hồi quá chậm. Vui lòng thử lại hoặc đổi máy chủ khác.");
+        }
+      }, 12000);
+    }
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -152,12 +175,12 @@ export function useHlsPlayer({
         nudgeOffset: 0.2,
         nudgeMaxRetry: 10,
         maxFragLookUpTolerance: 0.5,
-        manifestLoadingTimeOut: 12000,
-        manifestLoadingMaxRetry: 4,
-        levelLoadingTimeOut: 12000,
-        levelLoadingMaxRetry: 4,
-        fragLoadingTimeOut: 15000,
-        fragLoadingMaxRetry: 4,
+        manifestLoadingTimeOut: 8000,
+        manifestLoadingMaxRetry: 2,
+        levelLoadingTimeOut: 8000,
+        levelLoadingMaxRetry: 2,
+        fragLoadingTimeOut: 10000,
+        fragLoadingMaxRetry: 2,
         startLevel: -1,
         pLoader: PlaylistAdBlockLoader as any,
         fLoader: PlaylistAdBlockLoader as any,
@@ -224,8 +247,12 @@ export function useHlsPlayer({
       });
 
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
-        if (data?.details?.fragments) {
-          const frags = data.details.fragments;
+        if (data?.details) {
+          const frags = data.details.fragments || [];
+          if (!data.details.live && frags.length === 0) {
+            fallbackOrShowError("Luồng phim hiện không có dữ liệu phát.");
+            return;
+          }
           const initialCC = frags[0]?.cc ?? 0;
           let detectedAdEnd: number | null = null;
 
@@ -269,57 +296,43 @@ export function useHlsPlayer({
         }
 
         fatalErrorCount++;
+        const httpCode = (data.response as { code?: number } | undefined)?.code;
+        const isPermanentHttpError = httpCode === 403 || httpCode === 404 || httpCode === 410;
+
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
-            if (fatalErrorCount <= 4) {
+            if (!isPermanentHttpError && fatalErrorCount <= 2) {
               hls.startLoad();
             } else {
-              hls.destroy();
-              if (embedUrl) {
-                onFallbackToEmbedRef.current();
-              } else {
-                setError("Không thể kết nối máy chủ phát video. Vui lòng thử lại.");
-                setIsLoading(false);
-              }
+              fallbackOrShowError("Không thể kết nối máy chủ phát video. Vui lòng thử lại.");
             }
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
-            if (fatalErrorCount <= 4) {
+            if (fatalErrorCount <= 2) {
               hls.recoverMediaError();
             } else {
-              hls.destroy();
-              if (embedUrl) {
-                onFallbackToEmbedRef.current();
-              } else {
-                setError("Định dạng video không tương thích.");
-                setIsLoading(false);
-              }
+              fallbackOrShowError("Định dạng video không tương thích.");
             }
             break;
           default:
-            if (fatalErrorCount <= 2) {
+            if (fatalErrorCount <= 1) {
               hls.startLoad();
             } else {
-              hls.destroy();
-              if (embedUrl) {
-                onFallbackToEmbedRef.current();
-              } else {
-                setError("Luồng video gặp sự cố. Vui lòng thử lại.");
-                setIsLoading(false);
-              }
+              fallbackOrShowError("Luồng video gặp sự cố. Vui lòng thử lại.");
             }
             break;
         }
       });
 
       return () => {
-        window.clearTimeout(timeoutTimer);
+        if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
         hls.destroy();
         hlsRef.current = null;
       };
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       let nativeBlobUrl: string | null = null;
       const abortController = new AbortController();
+      nativeAbortController = abortController;
 
       // Clean stream and remove ads for native Apple HLS / Safari AVPlayer
       if (m3u8Url && !m3u8Url.startsWith("offline://")) {
@@ -380,12 +393,7 @@ export function useHlsPlayer({
         }
       };
       const handleError = () => {
-        if (embedUrl) {
-          onFallbackToEmbedRef.current();
-        } else {
-          setError("Không thể phát video.");
-          setIsLoading(false);
-        }
+        fallbackOrShowError("Không thể phát video.");
       };
 
       video.addEventListener("loadedmetadata", handleLoadedMeta, { once: true });
@@ -396,17 +404,42 @@ export function useHlsPlayer({
         if (nativeBlobUrl) {
           URL.revokeObjectURL(nativeBlobUrl);
         }
-        window.clearTimeout(timeoutTimer);
+        if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
         video.removeEventListener("loadedmetadata", handleLoadedMeta);
         video.removeEventListener("error", handleError);
       };
     } else if (embedUrl) {
+      if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
       onFallbackToEmbedRef.current();
     } else {
+      if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
       setError("Trình duyệt không hỗ trợ phát định dạng video này.");
       setIsLoading(false);
     }
-  }, [m3u8Url, preferM3U8, autoPlay, embedUrl, seekToInitialTime, videoRef]);
+  }, [m3u8Url, preferM3U8, autoPlay, embedUrl, seekToInitialTime, videoRef, retryNonce]);
+
+  // Continuous stall watchdog: if isLoading remains true for 15s (including mid-stream stalls or retries),
+  // automatically fall back to embed or show an error instead of spinning indefinitely.
+  useEffect(() => {
+    if (!isLoading || error || !preferM3U8 || !m3u8Url || m3u8Url.startsWith("offline://")) {
+      return;
+    }
+
+    const stallTimer = window.setTimeout(() => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      if (embedUrl) {
+        onFallbackToEmbedRef.current();
+      } else {
+        setError("Luồng phim bị gián đoạn hoặc phản hồi quá chậm. Vui lòng thử lại.");
+        setIsLoading(false);
+      }
+    }, 15000);
+
+    return () => window.clearTimeout(stallTimer);
+  }, [isLoading, error, preferM3U8, m3u8Url, embedUrl]);
 
   // Video time, buffer, and auto-next listeners
   useEffect(() => {
@@ -414,6 +447,9 @@ export function useHlsPlayer({
     if (!video) return;
 
     const handleTimeUpdate = () => {
+      if (!video.paused && video.readyState >= 3 && isLoadingRef.current) {
+        setIsLoading(false);
+      }
       setCurrentTime(video.currentTime);
       if (video.duration && !isNaN(video.duration)) {
         setDuration(video.duration);
@@ -489,10 +525,7 @@ export function useHlsPlayer({
   function retryPlayback() {
     setError(null);
     setIsLoading(true);
-    if (hlsRef.current && m3u8Url) {
-      hlsRef.current.loadSource(m3u8Url);
-      if (videoRef.current) hlsRef.current.attachMedia(videoRef.current);
-    }
+    setRetryNonce((prev) => prev + 1);
   }
 
   return {

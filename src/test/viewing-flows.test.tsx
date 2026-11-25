@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MovieCard } from "@/components/MovieCard";
 import { MovieRow } from "@/components/MovieRow";
+import { SearchAutocomplete } from "@/components/navbar/SearchAutocomplete";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { WatchHistoryProvider, useWatchHistory } from "@/context/WatchHistoryContext";
 import { WatchlistProvider, useWatchlist } from "@/context/WatchlistContext";
@@ -13,7 +14,13 @@ import { getImdbUrl, parseImdbRating } from "@/lib/imdb";
 import { getImdbMetadata } from "@/lib/imdbRating";
 import { queryClient } from "@/lib/queryClient";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { mapNguonCMovie, mapPhimApiMovie } from "@/services/movieApi";
+import {
+  getMovieDetails,
+  mapNguonCMovie,
+  mapPhimApiMovie,
+  normalizeEpisodes,
+  sanitizeStreamUrl,
+} from "@/services/movieApi";
 
 const movie: Movie = {
   id: "movie-1",
@@ -464,5 +471,134 @@ describe("Not found page", () => {
     expect(screen.getByText("Không tìm thấy cảnh này")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Trang chủ/ }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("link", { name: /Tìm phim/ }).getAttribute("href")).toBe("/search");
+  });
+});
+
+describe("search suggestions & unplayable episodes", () => {
+  it("renders movie poster thumbnails inside search autocomplete suggestions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: true,
+        data: {
+          APP_DOMAIN_CDN_IMAGE: "https://phimimg.com",
+          items: [
+            {
+              name: "Khuấy Đảo Bollywood",
+              origin_name: "The Ba***ds Of Bollywood",
+              slug: "khuay-dao-bollywood",
+              thumb_url: "upload/vod/bollywood.jpg",
+              year: 2025,
+              quality: "FHD",
+              episode_current: "Hoàn Tất (7/7)",
+            },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithMovieProviders(<SearchAutocomplete />);
+    const input = screen.getByRole("combobox", { name: "Tìm phim" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "ds" } });
+
+    const posterImg = await screen.findByAltText("Poster Khuấy Đảo Bollywood");
+    expect(posterImg.getAttribute("src")).toBe("https://phimimg.com/upload/vod/bollywood.jpg");
+  });
+
+  it("filters out empty placeholder episodes and keeps valid ones", () => {
+    const normalized = normalizeEpisodes([
+      {
+        server_name: "",
+        items: [
+          { name: "Tập 1", slug: "", embed: "", m3u8: undefined },
+        ],
+      },
+      {
+        server_name: "Vietsub",
+        items: [
+          { name: "", slug: "", embed: "", m3u8: "https://cdn.test/ep1.m3u8" },
+        ],
+      },
+    ]);
+
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0].server_name).toBe("Vietsub");
+    expect(normalized[0].items[0]).toMatchObject({
+      name: "Tập 1",
+      m3u8: "https://cdn.test/ep1.m3u8",
+    });
+    expect(normalized[0].items[0].embed).toContain("https://player.phimapi.com/player/");
+  });
+
+  it("returns empty episodes for trailer-only movies without throwing when fallback also lacks streams", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: true,
+          movie: {
+            name: "Nhà Ba Tôi Một Phòng",
+            slug: "nha-ba-toi-mot-phong-test",
+            episode_current: "Trailer",
+          },
+          episodes: [
+            {
+              server_name: "",
+              server_data: [{ name: "", slug: "", filename: "", link_embed: "", link_m3u8: "" }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const details = await getMovieDetails("nha-ba-toi-mot-phong-test");
+    expect(details.title).toBe("Nhà Ba Tôi Một Phòng");
+    expect(details.episodes).toEqual([]);
+  });
+
+  it("sanitizes invalid stream and empty wrapper embed URLs", () => {
+    expect(sanitizeStreamUrl("")).toBeUndefined();
+    expect(sanitizeStreamUrl("null")).toBeUndefined();
+    expect(sanitizeStreamUrl("#")).toBeUndefined();
+    expect(sanitizeStreamUrl("https://player.phimapi.com/player/?url=")).toBeUndefined();
+    expect(sanitizeStreamUrl("//cdn.test/video/index.m3u8")).toBe("https://cdn.test/video/index.m3u8");
+  });
+
+  it("recovers from a hung HLS stream by falling back to embed after timeout", () => {
+    vi.useFakeTimers();
+    const canPlaySpy = vi
+      .spyOn(HTMLMediaElement.prototype, "canPlayType")
+      .mockReturnValue("maybe");
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <VideoPlayer
+          title="Hung Movie"
+          m3u8Url="https://cdn.test/hung/index.m3u8"
+          embedUrl="https://embed.test/player"
+        />,
+      );
+
+      expect(screen.getByText("Đang tải luồng phim...")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(12500);
+      });
+
+      expect(screen.queryByText("Đang tải luồng phim...")).toBeNull();
+      expect(screen.getByText(/Embed: chất lượng\/tốc độ do nguồn quản lý/)).toBeTruthy();
+    } finally {
+      canPlaySpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

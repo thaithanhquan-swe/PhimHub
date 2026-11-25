@@ -489,19 +489,23 @@ export function mapNguonCMovie(item: NguonCMovieItem): Movie {
         item.current_episode.toLowerCase().includes("tập"),
     );
 
-  const poster =
+  const poster = normalizeImageUrl(
     item.thumb_url?.trim() ||
-    item.thumb_url_webp?.trim() ||
-    item.poster_url?.trim() ||
-    item.poster_url_webp?.trim() ||
-    "";
+      item.thumb_url_webp?.trim() ||
+      item.poster_url?.trim() ||
+      item.poster_url_webp?.trim() ||
+      "",
+    "https://img.nguonc.com",
+  );
 
-  const backdrop =
+  const backdrop = normalizeImageUrl(
     item.poster_url?.trim() ||
-    item.poster_url_webp?.trim() ||
-    item.thumb_url?.trim() ||
-    item.thumb_url_webp?.trim() ||
-    "";
+      item.poster_url_webp?.trim() ||
+      item.thumb_url?.trim() ||
+      item.thumb_url_webp?.trim() ||
+      "",
+    "https://img.nguonc.com",
+  );
 
   const yearNum = typeof item.year === "string" ? parseInt(item.year, 10) : item.year;
   const quality = item.quality || "HD";
@@ -746,68 +750,151 @@ export async function searchMovies(
   return result.data;
 }
 
-export async function getMovieDetails(slug: string, signal?: AbortSignal): Promise<MovieDetails> {
-  const result = await executeWithFailover(async (provider) => {
-    if (provider === "phimapi") {
-      const data = await fetchJson<PhimApiDetailResponse>(`https://phimapi.com/phim/${slug}`, signal);
-      if (!data.movie) {
-        throw new Error("Không tìm thấy thông tin phim trên PhimAPI.");
-      }
+export function sanitizeStreamUrl(url?: string | null): string | undefined {
+  if (!url || typeof url !== "string") return undefined;
+  let trimmed = url.trim();
+  if (!trimmed) return undefined;
+  const lower = trimmed.toLowerCase();
+  if (lower === "null" || lower === "undefined" || lower === "#" || lower === "n/a" || lower === "none") {
+    return undefined;
+  }
+  if (trimmed.startsWith("//")) {
+    trimmed = `https:${trimmed}`;
+  }
+  if (!/^https?:\/\//i.test(trimmed) && !trimmed.startsWith("offline://")) {
+    return undefined;
+  }
+  // Reject PhimAPI wrapper embed URLs that have an empty ?url= parameter
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.hostname.includes("player.phimapi.com") &&
+      parsed.searchParams.has("url") &&
+      !parsed.searchParams.get("url")?.trim()
+    ) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return trimmed;
+}
 
-      const raw = data.movie;
-      const baseMovie = mapPhimApiMovie(raw);
+export function normalizeEpisodes(servers: EpisodeServer[] = []): EpisodeServer[] {
+  return servers
+    .map((server) => ({
+      server_name: server.server_name?.trim() || "Vietsub",
+      items: (server.items || [])
+        .map((ep, index) => {
+          const m3u8 = sanitizeStreamUrl(ep.m3u8);
+          const embed =
+            sanitizeStreamUrl(ep.embed) ||
+            (m3u8 ? `https://player.phimapi.com/player/?url=${encodeURIComponent(m3u8)}` : "");
+          return {
+            name: ep.name?.trim() || `Tập ${index + 1}`,
+            slug: ep.slug?.trim() || `tap-${index + 1}`,
+            embed,
+            m3u8,
+          };
+        })
+        .filter((ep) => Boolean(ep.m3u8 || ep.embed)),
+    }))
+    .filter((server) => server.items.length > 0);
+}
 
-      const genres = (raw.category || []).map((c) => c.name);
-      const countries = (raw.country || []).map((c) => c.name);
+async function fetchMovieDetailsFromProvider(
+  provider: ApiProviderId,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<MovieDetails> {
+  if (provider === "phimapi") {
+    const data = await fetchJson<PhimApiDetailResponse>(`https://phimapi.com/phim/${slug}`, signal);
+    if (!data.movie) {
+      throw new Error("Không tìm thấy thông tin phim trên PhimAPI.");
+    }
 
-      const episodes: EpisodeServer[] = (data.episodes || []).map((server) => ({
+    const raw = data.movie;
+    const baseMovie = mapPhimApiMovie(raw);
+
+    const genres = (raw.category || []).map((c) => c.name);
+    const countries = (raw.country || []).map((c) => c.name);
+
+    const episodes = normalizeEpisodes(
+      (data.episodes || []).map((server) => ({
         server_name: server.server_name || "Vietsub",
         items: (server.server_data || []).map((ep) => ({
           name: ep.name || "Tập 1",
-          slug: ep.slug || String(ep.name),
-          embed: ep.link_embed || (ep.link_m3u8 ? `https://player.phimapi.com/player/?url=${encodeURIComponent(ep.link_m3u8)}` : ""),
+          slug: ep.slug || String(ep.name || ""),
+          embed:
+            ep.link_embed ||
+            (ep.link_m3u8
+              ? `https://player.phimapi.com/player/?url=${encodeURIComponent(ep.link_m3u8)}`
+              : ""),
           m3u8: ep.link_m3u8 || undefined,
         })),
-      }));
+      })),
+    );
 
-      return {
-        ...baseMovie,
-        overview: baseMovie.description,
-        genres: genres.length > 0 ? genres : [baseMovie.genre],
-        countries,
-        episodes,
-        recommendations: [],
-        trailerUrl: raw.trailer_url?.trim() || baseMovie.trailerUrl,
-      };
-    } else {
-      const data = await fetchJson<NguonCDetailResponse>(`https://phim.nguonc.com/api/film/${slug}`, signal);
-      if (!data.movie || data.status !== "success") {
-        throw new Error("Không tìm thấy thông tin phim trên NguonC.");
+    return {
+      ...baseMovie,
+      overview: baseMovie.description,
+      genres: genres.length > 0 ? genres : [baseMovie.genre],
+      countries,
+      episodes,
+      recommendations: [],
+      trailerUrl: raw.trailer_url?.trim() || baseMovie.trailerUrl,
+    };
+  }
+
+  const data = await fetchJson<NguonCDetailResponse>(`https://phim.nguonc.com/api/film/${slug}`, signal);
+  if (!data.movie || data.status !== "success") {
+    throw new Error("Không tìm thấy thông tin phim trên NguonC.");
+  }
+
+  const raw = data.movie;
+  const baseMovie = mapNguonCMovie(raw);
+
+  const genres: string[] = [];
+  const countries: string[] = [];
+  if (raw.category && typeof raw.category === "object") {
+    Object.values(raw.category).forEach((cat) => {
+      (cat.list || []).forEach((entry) => {
+        if (entry.name) genres.push(entry.name);
+      });
+    });
+  }
+
+  return {
+    ...baseMovie,
+    overview: baseMovie.description,
+    genres: genres.length > 0 ? genres : [baseMovie.genre],
+    countries,
+    episodes: normalizeEpisodes(raw.episodes || []),
+    recommendations: [],
+  };
+}
+
+export async function getMovieDetails(slug: string, signal?: AbortSignal): Promise<MovieDetails> {
+  const result = await executeWithFailover((provider) =>
+    fetchMovieDetailsFromProvider(provider, slug, signal),
+  );
+
+  // If the primary provider returned a placeholder entry with 0 playable episodes (e.g. "Trailer"),
+  // silently check the secondary provider once in case it already has working streams.
+  if (result.data.episodes.length === 0) {
+    const secondary: ApiProviderId = result.provider === "phimapi" ? "nguonc" : "phimapi";
+    try {
+      const secondaryDetails = await fetchMovieDetailsFromProvider(secondary, slug, signal);
+      if (secondaryDetails.episodes.length > 0) {
+        return {
+          ...result.data,
+          episodes: secondaryDetails.episodes,
+        };
       }
-
-      const raw = data.movie;
-      const baseMovie = mapNguonCMovie(raw);
-
-      const genres: string[] = [];
-      const countries: string[] = [];
-      if (raw.category && typeof raw.category === "object") {
-        Object.values(raw.category).forEach((cat) => {
-          (cat.list || []).forEach((entry) => {
-            if (entry.name) genres.push(entry.name);
-          });
-        });
-      }
-
-      return {
-        ...baseMovie,
-        overview: baseMovie.description,
-        genres: genres.length > 0 ? genres : [baseMovie.genre],
-        countries,
-        episodes: raw.episodes || [],
-        recommendations: [],
-      };
+    } catch {
+      // Ignore secondary lookup errors; keep primary metadata with empty episodes
     }
-  });
+  }
 
   return result.data;
 }

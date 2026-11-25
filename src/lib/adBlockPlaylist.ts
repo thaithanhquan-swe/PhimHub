@@ -298,6 +298,12 @@ export function cleanHlsPlaylist(text: string): string {
     result.push(rawLine);
   }
 
+  // Safety guard: if the original media playlist had segments, never return an empty 0-segment playlist
+  // due to an aggressive ad pattern match (which would cause Hls.js to spin forever).
+  if (!hasEmittedFirstSegment && text.includes("#EXTINF:")) {
+    return text;
+  }
+
   return result.join("\n");
 }
 
