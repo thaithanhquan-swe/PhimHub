@@ -41,13 +41,77 @@ interface LateralRibbon {
   blur: number;
 }
 
-// Ultra-smooth cinema cubic easing
+// Ultra-smooth cinema easing curves
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-function easeOutExpo(t: number): number {
-  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+function easeOutQuart(t: number): number {
+  return 1 - Math.pow(1 - t, 4);
+}
+
+function easeInOutSine(t: number): number {
+  return -(Math.cos(Math.PI * t) - 1) / 2;
+}
+
+// Pre-render a soft glowing vertical ribbon sprite once per unique color.
+// Using drawImage with a pre-baked glow sprite eliminates per-frame shadowBlur
+// and per-frame createLinearGradient allocations (the #1 cause of canvas stutter).
+function createRibbonSprite(color: string): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const sprite = document.createElement("canvas");
+  sprite.width = 48;
+  sprite.height = 256;
+  const sctx = sprite.getContext?.("2d");
+  if (!sctx) return null;
+
+  // 1. Horizontal soft glow profile (transparent edges -> color halo -> bright core)
+  const hGrad = sctx.createLinearGradient(0, 0, sprite.width, 0);
+  hGrad.addColorStop(0, "rgba(0,0,0,0)");
+  hGrad.addColorStop(0.22, `${color}55`);
+  hGrad.addColorStop(0.4, color);
+  hGrad.addColorStop(0.5, "#FFFFFF");
+  hGrad.addColorStop(0.6, color);
+  hGrad.addColorStop(0.78, `${color}55`);
+  hGrad.addColorStop(1, "rgba(0,0,0,0)");
+
+  sctx.fillStyle = hGrad;
+  sctx.fillRect(0, 0, sprite.width, sprite.height);
+
+  // 2. Vertical pole fade (transparent top/bottom -> full intensity center)
+  sctx.globalCompositeOperation = "destination-in";
+  const vGrad = sctx.createLinearGradient(0, 0, 0, sprite.height);
+  vGrad.addColorStop(0, "rgba(0,0,0,0)");
+  vGrad.addColorStop(0.18, "rgba(0,0,0,0.85)");
+  vGrad.addColorStop(0.5, "rgba(0,0,0,1)");
+  vGrad.addColorStop(0.82, "rgba(0,0,0,0.85)");
+  vGrad.addColorStop(1, "rgba(0,0,0,0)");
+
+  sctx.fillStyle = vGrad;
+  sctx.fillRect(0, 0, sprite.width, sprite.height);
+
+  return sprite;
+}
+
+// Pre-render anamorphic radial halo sprite once on mount
+function createFlareSprite(): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const sprite = document.createElement("canvas");
+  sprite.width = 256;
+  sprite.height = 256;
+  const sctx = sprite.getContext?.("2d");
+  if (!sctx) return null;
+
+  const r = 128;
+  const grad = sctx.createRadialGradient(r, r, 2, r, r, r);
+  grad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+  grad.addColorStop(0.16, "rgba(229, 9, 20, 0.8)");
+  grad.addColorStop(0.5, "rgba(180, 0, 40, 0.28)");
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+  sctx.fillStyle = grad;
+  sctx.fillRect(0, 0, 256, 256);
+  return sprite;
 }
 
 export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroProps) {
@@ -59,16 +123,22 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
   const animFrameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const completedRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  const isMutedRef = useRef(!autoPlayAudio);
 
   const [isMuted, setIsMuted] = useState(!autoPlayAudio);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [isFadingOut, setIsFadingOut] = useState(false);
 
+  onCompleteRef.current = onComplete;
+  isMutedRef.current = isMuted;
+
   // Synthesize authentic cinema "Ta-dum" chord via Web Audio API
   const playTaDum = useCallback(() => {
+    isMutedRef.current = false;
     setIsMuted(false);
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
 
       const ctx = audioContextRef.current || new AudioCtx();
@@ -151,10 +221,9 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
       shimmerGain.connect(ctx.destination);
       shimmer.start(tDum);
       shimmer.stop(tDum + 1.3);
-
-      setIsMuted(false);
     } catch {
       // Audio autoplay policy handled gracefully
+      isMutedRef.current = true;
       setIsMuted(true);
     }
   }, []);
@@ -167,12 +236,13 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
 
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
     }
 
     setTimeout(() => {
-      onComplete();
+      onCompleteRef.current();
     }, 400);
-  }, [onComplete]);
+  }, []);
 
   // Keyboard shortcut listener (Esc / Space / Enter)
   useEffect(() => {
@@ -186,14 +256,15 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleExit]);
 
-  // Main 60 FPS Render Loop & Horizontal Curtain Ribbon Expansion
+  // Main 60/120 FPS Render Loop & Horizontal Curtain Ribbon Expansion
+  // Note: Dependencies are strictly stable so toggling mute or parent renders NEVER restart the animation!
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     let ctx: CanvasRenderingContext2D | null = null;
     try {
-      ctx = canvas.getContext ? canvas.getContext("2d") : null;
+      ctx = canvas.getContext ? canvas.getContext("2d", { alpha: true }) : null;
     } catch {
       // Fallback for headless environments
     }
@@ -208,56 +279,74 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
     };
     window.addEventListener("resize", handleResize);
 
+    // Pre-render ribbon glow sprites once per unique spectrum color + flare sprite
+    const canUseSprites = Boolean(
+      ctx && typeof ctx.drawImage === "function" && typeof ctx.setTransform === "function",
+    );
+    const spriteCache = new Map<string, HTMLCanvasElement>();
+    if (canUseSprites) {
+      for (const color of SPECTRUM_COLORS) {
+        if (!spriteCache.has(color)) {
+          const sprite = createRibbonSprite(color);
+          if (sprite) spriteCache.set(color, sprite);
+        }
+      }
+    }
+    const flareSprite = canUseSprites ? createFlareSprite() : null;
+
     // Generate symmetrical ribbons expanding outwards to LEFT and RIGHT
-    const ribbonPairCount = Math.min(38, Math.max(22, Math.floor(width / 50)));
-    const ribbons: LateralRibbon[] = [];
+    const ribbonPairCount = Math.min(30, Math.max(18, Math.floor(width / 60)));
+    const ribbons: (LateralRibbon & { sprite: HTMLCanvasElement | null })[] = [];
     const centerX = width / 2;
 
     for (let i = 0; i < ribbonPairCount; i++) {
       const spreadRatio = (i + 1) / ribbonPairCount; // 0 to 1
       const col = SPECTRUM_COLORS[i % SPECTRUM_COLORS.length];
+      const sprite = spriteCache.get(col) ?? null;
 
       // Distance to left and right edges
-      const lateralDistance = Math.pow(spreadRatio, 0.78) * (width * 0.56 + 120);
-      const delay = Math.pow(spreadRatio, 1.4) * 0.28 + (Math.random() * 0.08);
+      const lateralDistance = Math.pow(spreadRatio, 0.8) * (width * 0.56 + 100);
+      const delay = Math.pow(spreadRatio, 1.35) * 0.26 + Math.random() * 0.06;
 
       // 1. Left-expanding ribbon (side: -1)
       ribbons.push({
         side: -1,
-        startX: centerX - (Math.random() * 18),
+        startX: centerX - Math.random() * 14,
         targetX: centerX - lateralDistance,
-        startWidth: 3 + Math.random() * 3,
-        targetWidth: 10 + Math.random() * 30,
+        startWidth: 6 + Math.random() * 6,
+        targetWidth: 22 + Math.random() * 44,
         color: col,
-        speed: 1.35 + Math.random() * 1.5,
+        speed: 1.2 + Math.random() * 1.15,
         delay,
         alpha: 0,
-        targetAlpha: 0.8 + Math.random() * 0.2,
-        blur: 5 + Math.random() * 14,
+        targetAlpha: 0.78 + Math.random() * 0.22,
+        blur: 0,
+        sprite,
       });
 
       // 2. Right-expanding ribbon (side: +1)
       ribbons.push({
         side: 1,
-        startX: centerX + (Math.random() * 18),
+        startX: centerX + Math.random() * 14,
         targetX: centerX + lateralDistance,
-        startWidth: 3 + Math.random() * 3,
-        targetWidth: 10 + Math.random() * 30,
+        startWidth: 6 + Math.random() * 6,
+        targetWidth: 22 + Math.random() * 44,
         color: col,
-        speed: 1.35 + Math.random() * 1.5,
+        speed: 1.2 + Math.random() * 1.15,
         delay,
         alpha: 0,
-        targetAlpha: 0.8 + Math.random() * 0.2,
-        blur: 5 + Math.random() * 14,
+        targetAlpha: 0.78 + Math.random() * 0.22,
+        blur: 0,
+        sprite,
       });
     }
 
-    startTimeRef.current = performance.now();
+    startTimeRef.current = 0;
 
-    // Trigger audio at exact moment
+    // Trigger audio at exact moment without restarting the animation loop
     let audioPlayed = false;
     const audioTriggerTimer = setTimeout(() => {
-      if (!audioPlayed && !isMuted) {
+      if (!audioPlayed && !isMutedRef.current) {
         audioPlayed = true;
         playTaDum();
       }
@@ -266,154 +355,160 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
     // Auto complete when intro ends
     const exitTimer = setTimeout(() => {
       handleExit();
-    }, 3600);
+    }, 3550);
 
-    // Single unified 60 FPS requestAnimationFrame loop:
-    // Pure time-based interpolation with zero React state re-rendering jank!
+    // Single unified requestAnimationFrame loop:
+    // Pure GPU transforms + pre-baked sprite blits = locked 60/120 FPS with zero jank!
     const render = (now: number) => {
-      const elapsed = (now - startTimeRef.current) / 1000;
+      if (completedRef.current) return;
 
-      // 1. Smooth Monogram Animation (Direct DOM Ref update = 0 React re-renders)
+      // Anchor t=0 on the very first painted animation frame so initial mount latency never skips frames
+      if (startTimeRef.current === 0) {
+        startTimeRef.current = now;
+      }
+
+      const elapsed = Math.max(0, (now - startTimeRef.current) / 1000);
+      const currentCenterX = width / 2;
+
+      // 1. Smooth Monogram Animation (GPU compositor transform + opacity only)
       if (monogramRef.current) {
         if (elapsed < 0.65) {
-          // Entrance: Smooth fade-in, perfectly centered, NO vertical bounce
+          // Entrance: Smooth fade-in + subtle cinema push-in
           const inProgress = Math.min(1, elapsed / 0.65);
           const easeIn = easeOutCubic(inProgress);
+          const scale = 0.93 + easeIn * 0.07;
           monogramRef.current.style.opacity = `${easeIn}`;
-          monogramRef.current.style.transform = `scale(1) translate3d(0, 0, 0)`;
-        } else if (elapsed >= 0.65 && elapsed < 1.3) {
-          // Stable centered presence with breathing glow
+          monogramRef.current.style.transform = `translate3d(0, 0, 0) scale(${scale})`;
+        } else if (elapsed < 1.25) {
+          // Gentle continuous drift (1.0 -> 1.03) so transition to expansion has zero velocity snap
+          const holdProgress = (elapsed - 0.65) / 0.6;
+          const drift = easeInOutSine(holdProgress);
+          const scale = 1 + drift * 0.03;
           monogramRef.current.style.opacity = "1";
-          monogramRef.current.style.transform = `scale(1) translate3d(0, 0, 0)`;
-        } else if (elapsed >= 1.3 && elapsed <= 2.2) {
-          // THE HORIZONTAL EXPANSION: Monogram stretches sideways into ribbons!
-          // Strictly horizontal scaleX expansion, NO vertical bounce!
-          const stretchProgress = Math.min(1, (elapsed - 1.3) / 0.55);
-          const stretchEase = easeOutCubic(stretchProgress);
-          const scaleX = 1 + stretchEase * 2.8; // Expands sideways to both sides
-          const opacity = Math.max(0, 1 - stretchEase * 1.35); // Dissolves into light ribbons
+          monogramRef.current.style.transform = `translate3d(0, 0, 0) scale(${scale})`;
+        } else if (elapsed <= 2.2) {
+          // Horizontal stretch into lateral ribbons
+          const stretchProgress = Math.min(1, (elapsed - 1.25) / 0.65);
+          const stretchEase = easeOutQuart(stretchProgress);
+          const scaleX = 1.03 + stretchEase * 2.8;
+          const scaleY = 1.03 - stretchEase * 0.03;
+          const opacity = Math.max(0, 1 - easeOutCubic(Math.min(1, stretchProgress * 1.2)));
           monogramRef.current.style.opacity = `${opacity}`;
-          monogramRef.current.style.transform = `scaleX(${scaleX}) scaleY(1) translate3d(0, 0, 0)`;
+          monogramRef.current.style.transform = `translate3d(0, 0, 0) scale(${scaleX}, ${scaleY})`;
         } else {
           monogramRef.current.style.opacity = "0";
         }
       }
 
-      // 2. Ambient Red Glow Animation
+      // 2. Ambient Red Glow Animation (no CSS transition fighting rAF!)
       if (ambientGlowRef.current) {
-        if (elapsed < 1.3) {
-          const glowAlpha = Math.min(0.75, elapsed * 0.65);
+        if (elapsed < 1.25) {
+          const glowAlpha = easeOutCubic(Math.min(1, elapsed / 1.1)) * 0.78;
           ambientGlowRef.current.style.opacity = `${glowAlpha}`;
-        } else if (elapsed >= 1.3 && elapsed < 2.5) {
-          // Glow expands sideways across widescreen
-          const lateralGlow = Math.min(1, (elapsed - 1.3) / 1.0);
-          ambientGlowRef.current.style.opacity = `${0.75 + (1 - lateralGlow) * 0.25}`;
-          ambientGlowRef.current.style.transform = `scaleX(${1 + lateralGlow * 1.5}) scaleY(1)`;
+          ambientGlowRef.current.style.transform = "translate3d(0, 0, 0) scaleX(1)";
+        } else if (elapsed < 2.65) {
+          const lateralGlow = Math.min(1, (elapsed - 1.25) / 1.1);
+          const glowEase = easeOutCubic(lateralGlow);
+          ambientGlowRef.current.style.opacity = `${0.78 * (1 - glowEase * 0.85)}`;
+          ambientGlowRef.current.style.transform = `translate3d(0, 0, 0) scaleX(${1 + glowEase * 1.6})`;
         } else {
           ambientGlowRef.current.style.opacity = "0";
         }
       }
 
-      // 3. Canvas Spectrum Ribbons & Anamorphic Flare
+      // 3. Canvas Spectrum Ribbons & Anamorphic Flare (Zero shadowBlur, zero per-frame gradients)
       if (ctx) {
         ctx.clearRect(0, 0, width, height);
 
-        // Ribbon lateral expansion begins at 1.3s
-        if (elapsed >= 1.3) {
+        if (elapsed >= 1.25) {
           ctx.save();
           ctx.globalCompositeOperation = "screen";
 
-          const explodeProgress = Math.min(1, (elapsed - 1.3) / 1.6);
-          const hyperSpeed = Math.pow(explodeProgress, 2.0);
+          const explodeProgress = Math.min(1, (elapsed - 1.25) / 1.65);
+          const hyperSpeed = explodeProgress * explodeProgress;
 
-          // Render each lateral ribbon expanding to the left or right
           for (let i = 0; i < ribbons.length; i++) {
             const r = ribbons[i];
-            const localTime = Math.max(0, elapsed - 1.3 - r.delay);
+            const localTime = elapsed - 1.25 - r.delay;
             if (localTime <= 0) continue;
 
             const progress = Math.min(1, localTime * r.speed);
-            const ribbonEase = easeOutExpo(progress);
+            const ribbonEase = easeOutQuart(progress);
 
-            // Interpolate horizontal position: expands from center to left or right
             const currentX = r.startX + (r.targetX - r.startX) * ribbonEase;
-            // Width also expands as ribbons fan out
-            const currentWidth = r.startWidth + (r.targetWidth - r.startWidth) * ribbonEase * (1 + hyperSpeed * 1.2);
+            const currentWidth =
+              r.startWidth + (r.targetWidth - r.startWidth) * ribbonEase * (1 + hyperSpeed * 1.15);
 
-            // Fade in smoothly, then dissolve laterally near 2.7s
-            let alpha = r.targetAlpha * Math.min(1, localTime * 5);
-            if (elapsed > 2.65) {
-              alpha *= Math.max(0, 1 - (elapsed - 2.65) / 0.6);
+            // Smooth fade in and lateral dissolve
+            let alpha = r.targetAlpha * easeOutCubic(Math.min(1, localTime / 0.22));
+            if (elapsed > 2.55) {
+              alpha *= Math.max(0, 1 - easeInOutSine(Math.min(1, (elapsed - 2.55) / 0.65)));
             }
 
             if (alpha <= 0.01) continue;
 
-            // Cinema ribbon gradient: transparent at poles, bright core in center
-            const grad = ctx.createLinearGradient(0, 0, 0, height);
-            grad.addColorStop(0, "rgba(0,0,0,0)");
-            grad.addColorStop(0.18, r.color);
-            grad.addColorStop(0.5, "#FFFFFF");
-            grad.addColorStop(0.82, r.color);
-            grad.addColorStop(1, "rgba(0,0,0,0)");
-
-            ctx.fillStyle = grad;
-            ctx.globalAlpha = alpha;
-            ctx.shadowColor = r.color;
-            ctx.shadowBlur = r.blur * (1 + hyperSpeed * 0.6);
-
             // Slight perspective tilt fanning outward left/right
-            const lateralLean = (currentX - centerX) * 0.06 * hyperSpeed;
+            const lateralLean = (currentX - currentCenterX) * 0.06 * hyperSpeed;
 
-            ctx.beginPath();
-            ctx.moveTo(currentX - currentWidth / 2 - lateralLean, 0);
-            ctx.lineTo(currentX + currentWidth / 2 - lateralLean, 0);
-            ctx.lineTo(currentX + currentWidth / 2 + lateralLean, height);
-            ctx.lineTo(currentX - currentWidth / 2 + lateralLean, height);
-            ctx.closePath();
-            ctx.fill();
+            if (r.sprite && canUseSprites) {
+              const skewX = (2 * lateralLean) / Math.max(1, height);
+              ctx.globalAlpha = alpha;
+              ctx.setTransform(1, 0, skewX, 1, currentX - lateralLean, 0);
+              ctx.drawImage(r.sprite, -currentWidth / 2, 0, currentWidth, height);
+            } else {
+              // Lightweight fallback for mocked test contexts
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = r.color;
+              ctx.beginPath();
+              ctx.moveTo(currentX - currentWidth / 2 - lateralLean, 0);
+              ctx.lineTo(currentX + currentWidth / 2 - lateralLean, 0);
+              ctx.lineTo(currentX + currentWidth / 2 + lateralLean, height);
+              ctx.lineTo(currentX - currentWidth / 2 + lateralLean, height);
+              ctx.closePath();
+              ctx.fill();
+            }
           }
 
-          // Horizontal Anamorphic Lens Flare (Shoots across the screen horizontally)
-          if (elapsed >= 1.35 && elapsed <= 2.8) {
-            const flareElapsed = elapsed - 1.35;
-            const flareDuration = 1.45;
-            const flareProgress = Math.min(1, flareElapsed / flareDuration);
+          if (canUseSprites) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+          }
+
+          // Horizontal Anamorphic Lens Flare
+          if (elapsed >= 1.3 && elapsed <= 2.8) {
+            const flareElapsed = elapsed - 1.3;
+            const flareProgress = Math.min(1, flareElapsed / 1.5);
             const flareAlpha = Math.sin(flareProgress * Math.PI) * 0.9;
+            const flareWidth = Math.min(width, easeOutQuart(Math.min(1, flareElapsed / 0.45)) * width);
+            const flareLeft = currentCenterX - flareWidth / 2;
 
-            // Horizontal stretch width: shoots out from 0 to full widescreen
-            const flareWidth = Math.min(width, (flareElapsed / 0.35) * width);
-            const flareLeft = centerX - flareWidth / 2;
+            // 1. Crisp horizontal laser beam core + soft glow halo (no shadowBlur!)
+            ctx.globalAlpha = flareAlpha * 0.35;
+            ctx.fillStyle = "#FF2E4C";
+            ctx.fillRect(flareLeft, height / 2 - 5, flareWidth, 10);
 
-            // 1. Horizontal laser beam line
-            ctx.fillStyle = `rgba(255, 255, 255, ${flareAlpha})`;
-            ctx.shadowColor = "#FF2E4C";
-            ctx.shadowBlur = 28;
-            ctx.fillRect(flareLeft, height / 2 - 2, flareWidth, 4);
+            ctx.globalAlpha = flareAlpha;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(flareLeft, height / 2 - 1.5, flareWidth, 3);
 
-            // 2. Anamorphic halo flare
-            const flareGrad = ctx.createRadialGradient(
-              centerX,
-              height / 2,
-              2,
-              centerX,
-              height / 2,
-              Math.max(10, flareWidth * 0.45),
-            );
-            flareGrad.addColorStop(0, `rgba(255, 255, 255, ${flareAlpha * 0.95})`);
-            flareGrad.addColorStop(0.15, `rgba(229, 9, 20, ${flareAlpha * 0.8})`);
-            flareGrad.addColorStop(0.5, `rgba(180, 0, 40, ${flareAlpha * 0.3})`);
-            flareGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-            ctx.fillStyle = flareGrad;
-            ctx.globalAlpha = flareAlpha * 0.75;
-            ctx.fillRect(0, 0, width, height);
+            // 2. Pre-rendered radial flare sprite
+            if (flareSprite && canUseSprites) {
+              const radius = Math.max(24, flareWidth * 0.45);
+              ctx.globalAlpha = flareAlpha * 0.78;
+              ctx.drawImage(
+                flareSprite,
+                currentCenterX - radius,
+                height / 2 - radius * 0.65,
+                radius * 2,
+                radius * 1.3,
+              );
+            }
           }
 
           ctx.restore();
         }
       }
 
-      if (elapsed < 3.8 && !completedRef.current) {
+      if (elapsed < 3.6 && !completedRef.current) {
         animFrameRef.current = requestAnimationFrame(render);
       }
     };
@@ -427,8 +522,12 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
     };
-  }, [handleExit, isMuted, playTaDum]);
+  }, [handleExit, playTaDum]);
 
   // Handle first user gesture anywhere
   const handleUserTap = () => {
@@ -443,11 +542,12 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
       ref={containerRef}
       onClick={handleUserTap}
       className={cn(
-        "fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-black select-none overflow-hidden cursor-pointer transition-opacity duration-500 ease-out",
+        "fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-black select-none overflow-hidden cursor-pointer transition-opacity duration-400 ease-out",
         isFadingOut ? "opacity-0 pointer-events-none" : "opacity-100",
       )}
       style={{
         background: "radial-gradient(ellipse at center, #150203 0%, #080101 45%, #000000 100%)",
+        contain: "layout style paint",
       }}
       aria-label="Netflix Intro PhimHub"
     >
@@ -457,20 +557,19 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
         className="absolute inset-0 size-full pointer-events-none z-20"
       />
 
-      {/* Atmospheric Ambient Red Glow (Expands laterally horizontally) */}
+      {/* Atmospheric Ambient Red Glow (Pure compositor transform + opacity, no CSS transition fighting rAF) */}
       <div
         ref={ambientGlowRef}
-        className="absolute inset-0 pointer-events-none will-change-transform opacity-0"
+        className="absolute inset-0 pointer-events-none will-change-[transform,opacity] opacity-0"
         style={{
-          background: "radial-gradient(ellipse 75% 45% at center, rgba(229,9,20,0.32) 0%, rgba(138,5,12,0.12) 45%, transparent 75%)",
-          transition: "opacity 0.5s ease-out",
+          background: "radial-gradient(ellipse 75% 45% at center, rgba(229,9,20,0.34) 0%, rgba(138,5,12,0.12) 45%, transparent 75%)",
         }}
       />
 
-      {/* Center 3D Netflix-style Monogram & Typography: Steady Vertical Center, Horizontal Stretch */}
+      {/* Center 3D Netflix-style Monogram & Typography: GPU-composited transform + opacity */}
       <div
         ref={monogramRef}
-        className="relative z-30 flex flex-col items-center justify-center will-change-transform opacity-0"
+        className="relative z-30 flex flex-col items-center justify-center will-change-[transform,opacity] opacity-0"
         style={{
           transformOrigin: "center center",
         }}
@@ -478,13 +577,18 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
         {/* The 3D Sculpted Ribbon Emblem (PhimHub Cinema Monogram) */}
         <div className="relative flex items-center justify-center mb-5 sm:mb-6">
           <div className="relative size-28 sm:size-36 md:size-40 flex items-center justify-center">
-            {/* Ribbon Glow Halo */}
-            <div className="absolute inset-0 rounded-full bg-[#E50914]/40 blur-3xl animate-pulse" />
+            {/* Soft radial halo (zero blur-filter repaint cost during scaleX) */}
+            <div
+              className="absolute -inset-8 rounded-full pointer-events-none"
+              style={{
+                background: "radial-gradient(circle, rgba(229,9,20,0.42) 0%, rgba(229,9,20,0.12) 45%, transparent 72%)",
+              }}
+            />
 
             {/* SVG 3D Ribbon Monogram "P" with Signature Interlocking 3D Folds & Specular Sheen */}
             <svg
               viewBox="0 0 130 150"
-              className="size-full drop-shadow-[0_18px_36px_rgba(0,0,0,0.9)] filter"
+              className="size-full"
               xmlns="http://www.w3.org/2000/svg"
             >
               <defs>
@@ -517,15 +621,10 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
                   <stop offset="0%" stopColor="rgba(255, 255, 255, 0.85)" />
                   <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
                 </linearGradient>
-
-                {/* Deep Realistic Ribbon Shadow */}
-                <filter id="ribbonShadow" x="-25%" y="-25%" width="160%" height="160%">
-                  <feDropShadow dx="3" dy="5" stdDeviation="4" floodColor="#000000" floodOpacity="0.9" />
-                </filter>
               </defs>
 
               {/* Back drop shadow of the vertical stem */}
-              <path d="M 25 12 L 51 12 L 51 136 Q 38 141 25 136 Z" fill="#2E0003" opacity="0.85" />
+              <path d="M 27 15 L 53 15 L 53 139 Q 40 144 27 139 Z" fill="#180001" opacity="0.9" />
 
               {/* Vertical Left Ribbon Pillar (with Netflix signature bottom curved smile) */}
               <path d="M 25 12 L 51 12 L 51 134 Q 38 140 25 134 Z" fill="url(#ribbonPillar)" />
@@ -545,11 +644,13 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
               {/* Return fold shadow where loop folds behind pillar */}
               <path d="M 51 68 L 51 92 L 44 92 L 44 68 Z" fill="#200002" opacity="0.75" />
 
+              {/* Vector shadow behind diagonal sash (avoids expensive SVG feDropShadow filter) */}
+              <path d="M 54 15 L 79 15 L 53 72 L 28 72 Z" fill="rgba(0,0,0,0.55)" />
+
               {/* Diagonal Ribbon Sash Overlap (Signature 3D Ribbon Twist) */}
               <path
                 d="M 51 12 L 76 12 L 50 68 L 25 68 Z"
                 fill="url(#ribbonSash)"
-                filter="url(#ribbonShadow)"
               />
 
               {/* Specular Highlight Sheen along top rim */}
@@ -573,11 +674,11 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
 
         {/* Cinematic Netflix-style Brand Title: PHIMHUB with Flawless Two-Tone Cinema Shading */}
         <div className="flex flex-col items-center">
-          <h1 className="flex items-center text-4xl sm:text-6xl md:text-7xl font-black tracking-[0.16em] sm:tracking-[0.2em] uppercase leading-none drop-shadow-[0_8px_28px_rgba(0,0,0,0.9)]">
-            <span className="bg-gradient-to-b from-white via-[#F5F5F7] to-[#D1D1D6] bg-clip-text text-transparent drop-shadow-[0_2px_10px_rgba(255,255,255,0.3)]">
+          <h1 className="flex items-center text-4xl sm:text-6xl md:text-7xl font-black tracking-[0.16em] sm:tracking-[0.2em] uppercase leading-none">
+            <span className="bg-gradient-to-b from-white via-[#F5F5F7] to-[#D1D1D6] bg-clip-text text-transparent">
               PHIM
             </span>
-            <span className="bg-gradient-to-b from-[#FF4D5A] via-[#E50914] to-[#A8030B] bg-clip-text text-transparent drop-shadow-[0_0_26px_rgba(229,9,20,0.75)] drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+            <span className="bg-gradient-to-b from-[#FF4D5A] via-[#E50914] to-[#A8030B] bg-clip-text text-transparent">
               HUB
             </span>
           </h1>
@@ -592,11 +693,11 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
           </div>
 
           {/* Anamorphic Horizon Floor Flare */}
-          <div className="mt-3.5 sm:mt-4.5 w-60 sm:w-80 md:w-96 h-[2px] bg-gradient-to-r from-transparent via-[#E50914]/70 to-transparent shadow-[0_0_16px_#E50914]" />
+          <div className="mt-3.5 sm:mt-4.5 w-60 sm:w-80 md:w-96 h-[2px] bg-gradient-to-r from-transparent via-[#E50914]/70 to-transparent shadow-[0_0_14px_rgba(229,9,20,0.8)]" />
         </div>
       </div>
 
-      {/* Top Controls: Sound Toggle & Skip Button */}
+      {/* Top Controls: Sound Toggle & Skip Button (no backdrop-blur-md over 60fps canvas) */}
       <div className="absolute top-5 inset-x-5 z-40 flex items-center justify-between">
         {/* Sound state badge / toggle */}
         <button
@@ -606,10 +707,11 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
             if (isMuted) {
               playTaDum();
             } else {
+              isMutedRef.current = true;
               setIsMuted(true);
             }
           }}
-          className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-xs font-semibold text-white/80 hover:text-white hover:border-white/30 backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+          className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/75 px-3 py-1.5 text-xs font-semibold text-white/80 hover:text-white hover:border-white/30 transition-colors active:scale-95 cursor-pointer"
           title={isMuted ? "Bật âm thanh intro Ta-dum" : "Tắt âm thanh"}
         >
           {isMuted ? (
@@ -619,7 +721,7 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
             </>
           ) : (
             <>
-              <Volume2 className="size-3.5 text-[#E50914] animate-pulse" />
+              <Volume2 className="size-3.5 text-[#E50914]" />
               <span className="text-[11px] text-white">Âm thanh bật</span>
             </>
           )}
@@ -632,7 +734,7 @@ export function NetflixIntro({ onComplete, autoPlayAudio = true }: NetflixIntroP
             e.stopPropagation();
             handleExit();
           }}
-          className="group flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-3.5 py-1.5 text-xs font-bold text-white shadow-xl backdrop-blur-md transition-all duration-150 hover:border-white hover:bg-white hover:text-black active:scale-95 cursor-pointer"
+          className="group flex items-center gap-1.5 rounded-full border border-white/20 bg-black/80 px-3.5 py-1.5 text-xs font-bold text-white shadow-xl transition-colors duration-150 hover:border-white hover:bg-white hover:text-black active:scale-95 cursor-pointer"
           title="Bỏ qua intro (Phím Esc hoặc Space)"
         >
           <span>Bỏ qua</span>
