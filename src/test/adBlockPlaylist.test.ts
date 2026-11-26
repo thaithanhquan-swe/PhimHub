@@ -397,6 +397,24 @@ describe("AdBlock Playlist Filter", () => {
       expect(res.hasAd).toBe(true);
       expect(res.adRanges).toEqual([{ start: 120, end: 140 }]);
     });
+
+    it("detects spliced ads via segment host origin or EXT-X-KEY change without DISCONTINUITY", () => {
+      const originSwitchPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:15.0,",
+        "https://ads-cdn.example.com/clip1.ts",
+        "#EXTINF:15.0,",
+        "https://ads-cdn.example.com/clip2.ts",
+        "#EXTINF:300.0,",
+        "https://movie-cdn.example.com/ep1_001.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(originSwitchPlaylist, "https://movie-cdn.example.com/ep1/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adRanges).toEqual([{ start: 0, end: 30 }]);
+    });
   });
 
   it("never returns an empty 0-segment playlist when all segments match ad patterns", () => {

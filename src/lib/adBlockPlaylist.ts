@@ -119,6 +119,17 @@ export interface PlaylistFragmentLike {
   tagList?: string[][];
   hasCueOut?: boolean;
   hasDiscontinuity?: boolean;
+  keyUri?: string | null;
+  decryptdata?: { uri?: string | null } | null;
+}
+
+function getHttpOrigin(url?: string): string | null {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 function mergeAdRanges(ranges: AdRange[]): AdRange[] {
@@ -182,6 +193,8 @@ export function detectAdFromFragments(
   let currentBlock: { start: number; end: number; hasAdSegment: boolean } | null = null;
   let activeExplicitAd: AdRange | null = null;
   let prevCC: number | undefined;
+  let prevOrigin: string | null = null;
+  let prevKeyUri: string | null | undefined;
 
   for (let i = 0; i < fragments.length; i++) {
     const frag = fragments[i];
@@ -196,7 +209,16 @@ export function detectAdFromFragments(
     const ccChanged = i > 0 && frag.cc !== undefined && prevCC !== undefined && frag.cc !== prevCC;
     prevCC = frag.cc;
 
-    if (!currentBlock || (i > 0 && (ccChanged || hasDiscTag))) {
+    const currOrigin = getHttpOrigin(frag.url);
+    const originChanged = i > 0 && prevOrigin !== null && currOrigin !== null && prevOrigin !== currOrigin;
+    if (currOrigin !== null) prevOrigin = currOrigin;
+
+    const currKeyUri = frag.keyUri !== undefined ? frag.keyUri : frag.decryptdata?.uri;
+    const keyChanged =
+      i > 0 && prevKeyUri !== undefined && currKeyUri !== undefined && prevKeyUri !== currKeyUri;
+    if (currKeyUri !== undefined) prevKeyUri = currKeyUri;
+
+    if (!currentBlock || (i > 0 && (ccChanged || hasDiscTag || originChanged || keyChanged))) {
       if (currentBlock) blocks.push(currentBlock);
       currentBlock = { start: fragStart, end: fragEnd, hasAdSegment: false };
     } else {
@@ -301,6 +323,7 @@ export function detectAdFromPlaylist(playlistText: string, url?: string): Detect
   let pendingDiscontinuity = false;
   let inCueOutBlock = false;
   let currentCC = 0;
+  let currentKeyUri: string | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
@@ -311,6 +334,12 @@ export function detectAdFromPlaylist(playlistText: string, url?: string): Detect
       if (match) {
         currentSegmentDuration = parseFloat(match[1]);
       }
+      continue;
+    }
+
+    if (trimmed.startsWith("#EXT-X-KEY:")) {
+      const uriMatch = trimmed.match(/URI="([^"]+)"/);
+      currentKeyUri = uriMatch ? uriMatch[1] : trimmed.includes("METHOD=NONE") ? null : currentKeyUri;
       continue;
     }
 
@@ -338,6 +367,7 @@ export function detectAdFromPlaylist(playlistText: string, url?: string): Detect
         url: trimmed,
         hasCueOut: inCueOutBlock,
         hasDiscontinuity: pendingDiscontinuity,
+        keyUri: currentKeyUri,
       });
       accumulatedTime += currentSegmentDuration;
       currentSegmentDuration = 0;
