@@ -51,9 +51,9 @@ export function isAdSegmentUrl(url: string): boolean {
     return true;
   }
 
-  // 2. MD5 / hashed video ad paths (/v9/<hex_hash>/..., /v7/.../segment_xxxx.ts, etc.)
-  // Avoid matching normal movie CDN versioned folders like /v2/movie_slug_2025/0001.ts
-  if (/(?:^|\/)v\d+\/(?:[a-f0-9]{16,}\/|[^/]*(?:seg(?:ment)?[-_]?\d+|ad|qc))/i.test(trimmed)) {
+  // 2. MD5 / hashed video ad paths (/v9/<32-char-md5>/..., /v7/.../segment_xxxx.ts, etc.)
+  // Never match arbitrary 'ad'/'qc' substrings in random base62 filenames under /vX/
+  if (/(?:^|\/)v\d+\/(?:[a-f0-9]{24,}\/|[^/]*seg(?:ment)?[-_]?\d+)/i.test(trimmed)) {
     return true;
   }
 
@@ -127,6 +127,10 @@ export function cleanHlsPlaylist(text: string): string {
   let skippedAd = false;
   let hasEmittedFirstSegment = false;
   let inCueOutBlock = false;
+  let cueOutRemaining = Infinity;
+  let totalSegmentCount = 0;
+  let skippedSegmentCount = 0;
+  let currentSegDuration = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -143,12 +147,15 @@ export function cleanHlsPlaylist(text: string): string {
       (trimmed.startsWith("#EXT-X-DATERANGE") && /CLASS="com\.apple\.hls\.interstitial"|X-AD-ID|SCTE35/i.test(trimmed))
     ) {
       inCueOutBlock = true;
+      const durMatch = trimmed.match(/DURATION=([\d.]+)/i);
+      cueOutRemaining = durMatch ? parseFloat(durMatch[1]) : 120;
       skippedAd = true;
       pendingTags = [];
       continue;
     }
     if (trimmed.startsWith("#EXT-X-CUE-IN")) {
       inCueOutBlock = false;
+      cueOutRemaining = Infinity;
       continue;
     }
 
@@ -166,17 +173,33 @@ export function cleanHlsPlaylist(text: string): string {
       trimmed.startsWith("#EXT-X-KEY:") ||
       trimmed.startsWith("#EXT-X-MAP:")
     ) {
+      if (trimmed.startsWith("#EXTINF:")) {
+        const m = trimmed.match(/#EXTINF:([\d.]+)/);
+        currentSegDuration = m ? parseFloat(m[1]) : 0;
+      }
       pendingTags.push(rawLine);
       continue;
     }
 
     // Media segment URI line (not starting with '#')
     if (!trimmed.startsWith("#")) {
-      const isAd = inCueOutBlock || isAdSegmentUrl(trimmed);
+      totalSegmentCount++;
+      const isCueAd = inCueOutBlock && cueOutRemaining > 0.5;
+      if (inCueOutBlock) {
+        cueOutRemaining -= currentSegDuration || 5;
+        if (cueOutRemaining <= 0.5) {
+          inCueOutBlock = false;
+          cueOutRemaining = Infinity;
+        }
+      }
+      currentSegDuration = 0;
+
+      const isAd = isCueAd || isAdSegmentUrl(trimmed);
       if (isAd) {
         // Discard ad segment and any associated tags (e.g. ad duration, temporary key reset)
         pendingTags = [];
         skippedAd = true;
+        skippedSegmentCount++;
         continue;
       }
 
@@ -204,8 +227,11 @@ export function cleanHlsPlaylist(text: string): string {
   }
 
   // Safety guard: if the original media playlist had segments, never return an empty 0-segment playlist
-  // due to an aggressive ad pattern match (which would cause Hls.js to spin forever).
+  // or wipe out > 35% of a full episode due to a CDN filename pattern overlapping with ad patterns.
   if (!hasEmittedFirstSegment && text.includes("#EXTINF:")) {
+    return text;
+  }
+  if (totalSegmentCount > 15 && skippedSegmentCount / totalSegmentCount > 0.35) {
     return text;
   }
 

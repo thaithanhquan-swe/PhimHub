@@ -40,6 +40,8 @@ describe("AdBlock Playlist Filter", () => {
     expect(isAdSegmentUrl("ep1_001.ts")).toBe(false);
     expect(isAdSegmentUrl("chunk-1080p-001.ts")).toBe(false);
     expect(isAdSegmentUrl("https://cdn.example.com/v2/movie_slug_2025/0001.ts")).toBe(false);
+    expect(isAdSegmentUrl("https://cdn.example.com/v7/2026112600000001/ak4K4adp.ts")).toBe(false);
+    expect(isAdSegmentUrl("https://cdn.example.com/v1/stream/qC9gJph3.ts")).toBe(false);
     expect(isAdSegmentUrl("5U7nPKi3.ts")).toBe(false);
     expect(isAdSegmentUrl("mL67UyKI.ts")).toBe(false);
     expect(isAdSegmentUrl("kv9LLXEp.ts")).toBe(false);
@@ -269,5 +271,17 @@ describe("AdBlock Playlist Filter", () => {
     const cleaned = cleanHlsPlaylist(raw);
     expect(cleaned).toContain("seg_001.ts");
     expect(cleaned).toContain("seg_002.ts");
+  });
+
+  it("never deletes legitimate movie segments under /vX/ paths or when >35% of a long playlist matches", () => {
+    const segments: string[] = [];
+    for (let i = 1; i <= 20; i++) {
+      segments.push("#EXTINF:5.0,", `https://cdn.example.com/v2/2026112600000001/segment_${String(i).padStart(4, "0")}.ts`);
+    }
+    const raw = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXTINF:4.0,", "intro_000.ts", ...segments, "#EXT-X-ENDLIST"].join("\n");
+
+    const cleaned = cleanHlsPlaylist(raw);
+    expect(cleaned).toContain("segment_0001.ts");
+    expect(cleaned).toContain("segment_0020.ts");
   });
 });
