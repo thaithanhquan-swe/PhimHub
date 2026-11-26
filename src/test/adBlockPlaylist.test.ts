@@ -8,11 +8,15 @@ import {
 
 describe("AdBlock Playlist Filter", () => {
   it("detects various ad segment patterns correctly", () => {
-    // Should identify ads
-    expect(isAdSegmentUrl("convertv9/CQvNBUVa.ts")).toBe(true);
-    expect(isAdSegmentUrl("convertv7/TAAUMVUF.ts")).toBe(true);
-    expect(isAdSegmentUrl("converted/clip.ts")).toBe(true);
-    expect(isAdSegmentUrl("convert/intro.ts")).toBe(true);
+    // Re-encoded movie segments in convertv9/convertv7/converted with random hashes must NOT be flagged as ads
+    expect(isAdSegmentUrl("convertv9/CQvNBUVa.ts")).toBe(false);
+    expect(isAdSegmentUrl("convertv7/TAAUMVUF.ts")).toBe(false);
+    expect(isAdSegmentUrl("converted/clip.ts")).toBe(false);
+    expect(isAdSegmentUrl("convert/movie_001.ts")).toBe(false);
+
+    // Should identify real ads
+    expect(isAdSegmentUrl("convert_ads/ad1.ts")).toBe(true);
+    expect(isAdSegmentUrl("convertv9/ad_banner.ts")).toBe(true);
     expect(isAdSegmentUrl("/v9/d3b54219ece57fa7c8af6d2076384ce0/segment_0001.ts")).toBe(true);
     expect(isAdSegmentUrl("/v9/custom_hash_12345/segment_0001.ts")).toBe(true);
     expect(isAdSegmentUrl("segment_0008.ts")).toBe(true);
@@ -70,7 +74,7 @@ describe("AdBlock Playlist Filter", () => {
       "#EXT-X-TARGETDURATION:6",
       "#EXT-X-DISCONTINUITY",
       "#EXTINF:5.0,",
-      "convertv9/ad1.ts",
+      "convert_ads/ad1.ts",
       "#EXT-X-DISCONTINUITY",
       "#EXTINF:4.0,",
       "movie1.ts",
@@ -80,7 +84,7 @@ describe("AdBlock Playlist Filter", () => {
     ].join("\n");
 
     const cleaned = cleanHlsPlaylist(raw);
-    expect(cleaned).not.toContain("convertv9/ad1.ts");
+    expect(cleaned).not.toContain("convert_ads/ad1.ts");
     expect(cleaned).toContain("movie1.ts");
     expect(cleaned).toContain("movie2.ts");
     // Preroll should not have a leading discontinuity before the first movie segment
@@ -96,11 +100,11 @@ describe("AdBlock Playlist Filter", () => {
       "movie1.ts",
       "#EXT-X-DISCONTINUITY",
       "#EXTINF:3.0,",
-      "convertv9/ad1.ts",
+      "convert_ads/ad1.ts",
       "#EXT-X-DISCONTINUITY",
       "#EXT-X-DISCONTINUITY",
       "#EXTINF:3.0,",
-      "convertv9/ad2.ts",
+      "convert_ads/ad2.ts",
       "#EXT-X-DISCONTINUITY",
       "#EXTINF:4.0,",
       "movie2.ts",
@@ -108,7 +112,7 @@ describe("AdBlock Playlist Filter", () => {
     ].join("\n");
 
     const cleaned = cleanHlsPlaylist(raw);
-    expect(cleaned).not.toContain("convertv9");
+    expect(cleaned).not.toContain("convert_ads");
     expect(cleaned).toContain("movie1.ts");
     expect(cleaned).toContain("movie2.ts");
 
@@ -185,7 +189,9 @@ describe("AdBlock Playlist Filter", () => {
     ].join("\n");
 
     const cleaned = cleanHlsPlaylist(snippet);
-    expect(cleaned).not.toContain("convertv9");
+    // Keep convertv9 movie segments intact so movie scenes are not skipped, while stripping the /v9/<md5>/ casino ad
+    expect(cleaned).toContain("convertv9/CQvNBUVa.ts");
+    expect(cleaned).toContain("convertv9/8GI0vLyC.ts");
     expect(cleaned).not.toContain("/v9/");
     expect(cleaned).not.toContain("METHOD=NONE");
     expect(cleaned).toContain("tO50yWER.ts");
@@ -194,8 +200,8 @@ describe("AdBlock Playlist Filter", () => {
     expect(cleaned).toContain("vWfVia8f.ts");
 
     const discontinuities = cleaned.split("\n").filter((l) => l.trim() === "#EXT-X-DISCONTINUITY");
-    // Exactly 2 discontinuities: one between tO50yWER & 99wPBXm2, and one between o2F0lnSG & vWfVia8f
-    expect(discontinuities.length).toBe(2);
+    // Deduplicated discontinuities: 1 before CQvNBUVa, 1 before 8GI0vLyC, 1 before 99wPBXm2, and 1 before vWfVia8f
+    expect(discontinuities.length).toBe(4);
   });
 
   it("PlaylistAdBlockLoader intercepts playlist response and cleans it", () => {
@@ -215,7 +221,7 @@ describe("AdBlock Playlist Filter", () => {
         callbacks.onSuccess(
           {
             url: context.url,
-            data: "#EXTM3U\n#EXTINF:5.0,\nconvertv9/ad.ts\n#EXTINF:4.0,\npart1.ts\n#EXT-X-ENDLIST",
+            data: "#EXTM3U\n#EXTINF:5.0,\n/v9/d3b54219ece57fa7c8af6d2076384ce0/segment_0001.ts\n#EXTINF:4.0,\npart1.ts\n#EXT-X-ENDLIST",
           },
           {},
           context,
@@ -235,7 +241,7 @@ describe("AdBlock Playlist Filter", () => {
       },
     );
 
-    expect(interceptedData).not.toContain("convertv9");
+    expect(interceptedData).not.toContain("/v9/");
     expect(interceptedData).toContain("part1.ts");
   });
 

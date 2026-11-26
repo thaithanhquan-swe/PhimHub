@@ -46,8 +46,10 @@ export function isAdSegmentUrl(url: string): boolean {
     return false;
   }
 
-  // 1. Common CDN ad-injection folders (convertv7, convertv9, convert, converted, convert1, convert-ads, etc.)
-  if (/(?:^|\/)convert(?:v?\d*|ed|[_-]|\/|$)/i.test(trimmed)) {
+  // 1. Explicit ad-injection folders (convert-ads, convert_ads, ads, etc.)
+  // NOTE: Do NOT blanket-block convert/ or convertv9/ random-hash segments (e.g. convertv9/YK9mLeXg.ts),
+  // because PhimAPI stores re-encoded movie scenes in convertv9/ — blocking them skips ~25s of the movie!
+  if (/(?:^|\/)convert[-_]?ads?(?:\/|$)/i.test(trimmed)) {
     return true;
   }
 
