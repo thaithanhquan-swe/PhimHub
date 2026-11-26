@@ -10,11 +10,9 @@ import {
   AssistiveTouchLock,
   DoubleTapFeedback,
   EmbedPlayerFallback,
-  getActiveAdTarget,
   NextEpisodePrompt,
   PlayerBottomControls,
   PlayerCenterControls,
-  SkipAdButton,
   type SettingsTab,
   type VideoPlayerProps,
 } from "./player";
@@ -31,8 +29,6 @@ export function VideoPlayer({
   onTimeUpdate,
   initialTime = 0,
   preferEmbed = false,
-  hasAd,
-  adDuration,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -169,7 +165,6 @@ export function VideoPlayer({
     mutedAutoplayNotice,
     setMutedAutoplayNotice,
     retryPlayback,
-    adInfo,
   } = useHlsPlayer({
     videoRef,
     m3u8Url,
@@ -251,33 +246,6 @@ export function VideoPlayer({
     }
     resetHideControlsTimer();
   }
-
-  const effectiveHasAd = hasAd !== undefined ? hasAd : adInfo.hasAd;
-  const effectiveAdDuration = adDuration ?? (adInfo.adDuration > 0 ? adInfo.adDuration : 85);
-  const effectiveAdRanges = hasAd !== undefined ? undefined : adInfo.adRanges;
-
-  const activeAdTarget = getActiveAdTarget({
-    currentTime,
-    duration,
-    hasAd: effectiveHasAd,
-    adDuration: effectiveAdDuration,
-    adRanges: effectiveAdRanges,
-  });
-
-  const handleSkipAd = useCallback(
-    (seconds?: number) => {
-      const video = videoRef.current;
-      if (!video) return;
-      const target = seconds ?? activeAdTarget ?? effectiveAdDuration;
-      const dur = Number.isFinite(video.duration) ? video.duration : 0;
-      const maxTime = dur > 0 ? Math.min(dur, target) : target;
-      video.currentTime = maxTime;
-      setCurrentTime(maxTime);
-      triggerToast("Đã bỏ qua quảng cáo");
-      resetHideControlsTimer();
-    },
-    [activeAdTarget, effectiveAdDuration, resetHideControlsTimer, setCurrentTime, triggerToast],
-  );
 
   function changeVolume(newVol: number) {
     const video = videoRef.current;
@@ -442,12 +410,6 @@ export function VideoPlayer({
           e.preventDefault();
           changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100));
           break;
-        case "s":
-          if (activeAdTarget !== null) {
-            e.preventDefault();
-            handleSkipAd(activeAdTarget);
-          }
-          break;
         case "n":
           if (hasNextEpisode && onNextEpisode) {
             e.preventDefault();
@@ -465,8 +427,6 @@ export function VideoPlayer({
     onNextEpisode,
     isScreenLocked,
     handleToggleScreenOrientation,
-    handleSkipAd,
-    activeAdTarget,
   ]);
 
   // Timeline scrub handlers
@@ -662,17 +622,6 @@ export function VideoPlayer({
         onTimelineTouch={handleTimelineScrubTouch}
         onTimelineHover={handleTimelineHover}
         onTimelineMouseLeave={() => setHoverTime(null)}
-      />
-
-      {/* Netflix-style Floating Skip Ad Button (only visible during detected ads) */}
-      <SkipAdButton
-        currentTime={currentTime}
-        duration={duration}
-        isScreenLocked={isScreenLocked}
-        hasAd={effectiveHasAd}
-        adDuration={effectiveAdDuration}
-        adRanges={effectiveAdRanges}
-        onSkipAd={handleSkipAd}
       />
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}

@@ -100,305 +100,24 @@ export function isAdSegmentUrl(url: string): boolean {
   return false;
 }
 
-export interface AdRange {
-  start: number;
-  end: number;
-}
-
-export interface DetectedAdInfo {
-  hasAd: boolean;
-  adDuration: number;
-  adRanges: AdRange[];
-}
-
-export interface PlaylistFragmentLike {
-  start: number;
-  duration: number;
-  cc?: number;
-  url?: string;
-  tagList?: string[][];
-  hasCueOut?: boolean;
-  hasDiscontinuity?: boolean;
-  keyUri?: string | null;
-  decryptdata?: { uri?: string | null } | null;
-}
-
-function getHttpOrigin(url?: string): string | null {
-  if (!url || !/^https?:\/\//i.test(url)) return null;
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-}
-
-function mergeAdRanges(ranges: AdRange[]): AdRange[] {
-  const valid = ranges
-    .map((r) => ({ start: Math.max(0, Math.round(r.start)), end: Math.max(0, Math.round(r.end)) }))
-    .filter((r) => r.end > r.start)
-    .sort((a, b) => a.start - b.start || a.end - b.end);
-
-  if (valid.length <= 1) return valid;
-
-  const merged: AdRange[] = [valid[0]];
-  for (let i = 1; i < valid.length; i++) {
-    const prev = merged[merged.length - 1];
-    const curr = valid[i];
-    if (curr.start <= prev.end + 2) {
-      prev.end = Math.max(prev.end, curr.end);
-    } else {
-      merged.push(curr);
-    }
-  }
-  return merged;
-}
-
-const MAX_INFERRED_AD_SECONDS = 95;
-const MAX_EXPLICIT_AD_SECONDS = 180;
-const strippedPrerollUrls = new Set<string>();
-
-function markStrippedPrerollUrl(url?: string) {
-  if (!url) return;
-  if (strippedPrerollUrls.size >= 50) {
-    const oldest = strippedPrerollUrls.values().next().value;
-    if (oldest) strippedPrerollUrls.delete(oldest);
-  }
-  strippedPrerollUrls.add(url);
-}
-
-export function hasStrippedPreroll(url?: string): boolean {
-  return Boolean(url && strippedPrerollUrls.has(url));
-}
-
-/**
- * Analyzes parsed HLS fragments (from Hls.js LEVEL_LOADED or playlist parser)
- * to detect pre-roll and mid-roll ad segments / discontinuity blocks.
- */
-export function detectAdFromFragments(
-  fragments: PlaylistFragmentLike[],
-  url?: string,
-  options?: { hadStrippedPreroll?: boolean },
-): DetectedAdInfo {
-  const isNguonC = Boolean(url && /nguonc/i.test(url)) && !options?.hadStrippedPreroll;
-
-  if (!fragments || fragments.length === 0) {
-    return isNguonC
-      ? { hasAd: true, adDuration: 85, adRanges: [{ start: 0, end: 85 }] }
-      : { hasAd: false, adDuration: 0, adRanges: [] };
-  }
-
-  const blocks: Array<{ start: number; end: number; hasAdSegment: boolean }> = [];
-  const explicitAdRanges: AdRange[] = [];
-
-  let currentBlock: { start: number; end: number; hasAdSegment: boolean } | null = null;
-  let activeExplicitAd: AdRange | null = null;
-  let prevCC: number | undefined;
-  let prevOrigin: string | null = null;
-  let prevKeyUri: string | null | undefined;
-
-  for (let i = 0; i < fragments.length; i++) {
-    const frag = fragments[i];
-    const fragStart = Math.max(0, Number.isFinite(frag.start) ? frag.start : 0);
-    const fragDuration = Math.max(0, Number.isFinite(frag.duration) ? frag.duration : 0);
-    const fragEnd = fragStart + fragDuration;
-
-    const hasDiscTag = Boolean(
-      frag.hasDiscontinuity ||
-        frag.tagList?.some((tags) => tags.includes("EXT-X-DISCONTINUITY")),
-    );
-    const ccChanged = i > 0 && frag.cc !== undefined && prevCC !== undefined && frag.cc !== prevCC;
-    prevCC = frag.cc;
-
-    const currOrigin = getHttpOrigin(frag.url);
-    const originChanged = i > 0 && prevOrigin !== null && currOrigin !== null && prevOrigin !== currOrigin;
-    if (currOrigin !== null) prevOrigin = currOrigin;
-
-    const currKeyUri = frag.keyUri !== undefined ? frag.keyUri : frag.decryptdata?.uri;
-    const keyChanged =
-      i > 0 && prevKeyUri !== undefined && currKeyUri !== undefined && prevKeyUri !== currKeyUri;
-    if (currKeyUri !== undefined) prevKeyUri = currKeyUri;
-
-    if (!currentBlock || (i > 0 && (ccChanged || hasDiscTag || originChanged || keyChanged))) {
-      if (currentBlock) blocks.push(currentBlock);
-      currentBlock = { start: fragStart, end: fragEnd, hasAdSegment: false };
-    } else {
-      currentBlock.end = Math.max(currentBlock.end, fragEnd);
-    }
-
-    const isExplicitAd = Boolean(frag.hasCueOut || (frag.url && isAdSegmentUrl(frag.url)));
-    if (isExplicitAd) {
-      currentBlock.hasAdSegment = true;
-      if (!activeExplicitAd) {
-        activeExplicitAd = { start: fragStart, end: fragEnd };
-      } else {
-        activeExplicitAd.end = Math.max(activeExplicitAd.end, fragEnd);
-      }
-    } else if (activeExplicitAd) {
-      explicitAdRanges.push(activeExplicitAd);
-      activeExplicitAd = null;
-    }
-  }
-
-  if (currentBlock) blocks.push(currentBlock);
-  if (activeExplicitAd) explicitAdRanges.push(activeExplicitAd);
-
-  const detectedRanges: AdRange[] = [...explicitAdRanges];
-
-  if (blocks.length >= 2) {
-    const first = blocks[0];
-    const firstDur = first.end - first.start;
-    const firstLimit = first.hasAdSegment ? MAX_EXPLICIT_AD_SECONDS : MAX_INFERRED_AD_SECONDS;
-
-    // Pre-roll spliced ad block before first discontinuity (avoid treating long cold opens as ads)
-    const looksLikeColdOpenBeforeShortAd =
-      !first.hasAdSegment &&
-      blocks.length >= 3 &&
-      firstDur > 45 &&
-      blocks[1].end - blocks[1].start <= MAX_INFERRED_AD_SECONDS;
-
-    if (!looksLikeColdOpenBeforeShortAd && firstDur >= 3 && firstDur <= firstLimit) {
-      detectedRanges.push({ start: 0, end: Math.round(first.end) });
-    }
-
-    // Interior discontinuity-bracketed blocks anywhere in the video (mid-roll ads / post-cold-open ads)
-    for (let k = 1; k < blocks.length - 1; k++) {
-      const block = blocks[k];
-      const dur = block.end - block.start;
-      const limit = block.hasAdSegment ? MAX_EXPLICIT_AD_SECONDS : MAX_INFERRED_AD_SECONDS;
-      if (dur >= 3 && dur <= limit) {
-        detectedRanges.push({ start: Math.round(block.start), end: Math.round(block.end) });
-      }
-    }
-  }
-
-  const adRanges = mergeAdRanges(detectedRanges);
-
-  if (adRanges.length > 0) {
-    return {
-      hasAd: true,
-      adDuration: adRanges[0].end,
-      adRanges,
-    };
-  }
-
-  if (isNguonC) {
-    return {
-      hasAd: true,
-      adDuration: 85,
-      adRanges: [{ start: 0, end: 85 }],
-    };
-  }
-
-  return {
-    hasAd: false,
-    adDuration: 0,
-    adRanges: [],
-  };
-}
-
-/**
- * Analyzes an HLS playlist to detect if the stream contains an advertisement
- * and determine its exact duration and time ranges (pre-roll or mid-roll).
- */
-export function detectAdFromPlaylist(playlistText: string, url?: string): DetectedAdInfo {
-  const isNguonC = Boolean(url && /nguonc/i.test(url));
-
-  if (!playlistText || typeof playlistText !== "string") {
-    return isNguonC
-      ? { hasAd: true, adDuration: 85, adRanges: [{ start: 0, end: 85 }] }
-      : { hasAd: false, adDuration: 0, adRanges: [] };
-  }
-
-  // Multivariant master playlist without media segments: fallback to URL check
-  if (playlistText.includes("#EXT-X-STREAM-INF") && !playlistText.includes("#EXTINF:")) {
-    return isNguonC
-      ? { hasAd: true, adDuration: 85, adRanges: [{ start: 0, end: 85 }] }
-      : { hasAd: false, adDuration: 0, adRanges: [] };
-  }
-
-  const lines = playlistText.split("\n");
-  const fragments: PlaylistFragmentLike[] = [];
-  let accumulatedTime = 0;
-  let currentSegmentDuration = 0;
-  let pendingDiscontinuity = false;
-  let inCueOutBlock = false;
-  let currentCC = 0;
-  let currentKeyUri: string | null = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    if (!trimmed) continue;
-
-    if (trimmed.startsWith("#EXTINF:")) {
-      const match = trimmed.match(/#EXTINF:([\d.]+)/);
-      if (match) {
-        currentSegmentDuration = parseFloat(match[1]);
-      }
-      continue;
-    }
-
-    if (trimmed.startsWith("#EXT-X-KEY:")) {
-      const uriMatch = trimmed.match(/URI="([^"]+)"/);
-      currentKeyUri = uriMatch ? uriMatch[1] : trimmed.includes("METHOD=NONE") ? null : currentKeyUri;
-      continue;
-    }
-
-    if (trimmed === "#EXT-X-DISCONTINUITY") {
-      pendingDiscontinuity = true;
-      currentCC++;
-      continue;
-    }
-
-    if (trimmed.startsWith("#EXT-X-CUE-OUT") || trimmed.startsWith("#EXT-OATCLS-SCTE35")) {
-      inCueOutBlock = true;
-      continue;
-    }
-
-    if (trimmed.startsWith("#EXT-X-CUE-IN")) {
-      inCueOutBlock = false;
-      continue;
-    }
-
-    if (!trimmed.startsWith("#")) {
-      fragments.push({
-        start: accumulatedTime,
-        duration: currentSegmentDuration,
-        cc: currentCC,
-        url: trimmed,
-        hasCueOut: inCueOutBlock,
-        hasDiscontinuity: pendingDiscontinuity,
-        keyUri: currentKeyUri,
-      });
-      accumulatedTime += currentSegmentDuration;
-      currentSegmentDuration = 0;
-      pendingDiscontinuity = false;
-    }
-  }
-
-  return detectAdFromFragments(fragments, url);
-}
-
 /**
  * Strips advertisement segments from an HLS (.m3u8) playlist.
  * Automatically cleans up accompanying discontinuity tags, ad keys,
  * SCTE-35 / CUE markers, and maintains continuous, stutter-free playback.
  */
-export function cleanHlsPlaylistWithInfo(text: string): {
-  text: string;
-  strippedPreroll: boolean;
-} {
+export function cleanHlsPlaylist(text: string): string {
   if (!text || typeof text !== "string") {
-    return { text, strippedPreroll: false };
+    return text;
   }
 
   // Only process valid HLS content
   if (!text.includes("#EXTM3U")) {
-    return { text, strippedPreroll: false };
+    return text;
   }
 
   // Do not modify master / multivariant playlists (they contain #EXT-X-STREAM-INF, not #EXTINF)
   if (text.includes("#EXT-X-STREAM-INF") && !text.includes("#EXTINF:")) {
-    return { text, strippedPreroll: false };
+    return text;
   }
 
   const lines = text.split("\n");
@@ -406,7 +125,6 @@ export function cleanHlsPlaylistWithInfo(text: string): {
   let pendingTags: string[] = [];
   let pendingDiscontinuity = false;
   let skippedAd = false;
-  let strippedPreroll = false;
   let hasEmittedFirstSegment = false;
   let inCueOutBlock = false;
 
@@ -422,11 +140,10 @@ export function cleanHlsPlaylistWithInfo(text: string): {
     if (
       trimmed.startsWith("#EXT-X-CUE-OUT") ||
       trimmed.startsWith("#EXT-OATCLS-SCTE35") ||
-      trimmed.startsWith("#EXT-X-DATERANGE") && /CLASS="com\.apple\.hls\.interstitial"|X-AD-ID|SCTE35/i.test(trimmed)
+      (trimmed.startsWith("#EXT-X-DATERANGE") && /CLASS="com\.apple\.hls\.interstitial"|X-AD-ID|SCTE35/i.test(trimmed))
     ) {
       inCueOutBlock = true;
       skippedAd = true;
-      if (!hasEmittedFirstSegment) strippedPreroll = true;
       pendingTags = [];
       continue;
     }
@@ -460,7 +177,6 @@ export function cleanHlsPlaylistWithInfo(text: string): {
         // Discard ad segment and any associated tags (e.g. ad duration, temporary key reset)
         pendingTags = [];
         skippedAd = true;
-        if (!hasEmittedFirstSegment) strippedPreroll = true;
         continue;
       }
 
@@ -490,14 +206,10 @@ export function cleanHlsPlaylistWithInfo(text: string): {
   // Safety guard: if the original media playlist had segments, never return an empty 0-segment playlist
   // due to an aggressive ad pattern match (which would cause Hls.js to spin forever).
   if (!hasEmittedFirstSegment && text.includes("#EXTINF:")) {
-    return { text, strippedPreroll: false };
+    return text;
   }
 
-  return { text: result.join("\n"), strippedPreroll };
-}
-
-export function cleanHlsPlaylist(text: string): string {
-  return cleanHlsPlaylistWithInfo(text).text;
+  return result.join("\n");
 }
 
 /**
@@ -635,12 +347,7 @@ export class PlaylistAdBlockLoader extends (Hls.DefaultConfig.loader as any) {
     const originalSuccess = callbacks.onSuccess;
     callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
       if (typeof response.data === "string") {
-        const cleaned = cleanHlsPlaylistWithInfo(response.data);
-        if (cleaned.strippedPreroll) {
-          markStrippedPrerollUrl(ctx.url);
-          markStrippedPrerollUrl(context.url);
-        }
-        response.data = cleaned.text;
+        response.data = cleanHlsPlaylist(response.data);
       }
       originalSuccess.call(this, response, stats, ctx, networkDetails);
     };
@@ -707,11 +414,7 @@ export function makeHlsUrlsAbsolute(playlistText: string, baseUrl: string): stri
  * Downloads and cleans an HLS playlist for native video players (such as iOS Safari / Apple AVPlayer),
  * returning an ad-free Blob URL where all relative segment URLs have been converted to absolute URLs.
  */
-export async function createCleanNativeM3u8Url(
-  m3u8Url: string,
-  signal?: AbortSignal,
-  onAdDetected?: (info: DetectedAdInfo) => void,
-): Promise<string> {
+export async function createCleanNativeM3u8Url(m3u8Url: string, signal?: AbortSignal): Promise<string> {
   const res = await fetch(m3u8Url, { signal });
   const text = await res.text();
 
@@ -731,7 +434,6 @@ export async function createCleanNativeM3u8Url(
     if (subUrl) {
       const subRes = await fetch(subUrl, { signal });
       const subText = await subRes.text();
-      onAdDetected?.(detectAdFromPlaylist(subText, subUrl));
       const cleaned = cleanHlsPlaylist(subText);
       const absoluteCleaned = makeHlsUrlsAbsolute(cleaned, subUrl);
       const blob = new Blob([absoluteCleaned], { type: "application/vnd.apple.mpegurl" });
@@ -740,7 +442,6 @@ export async function createCleanNativeM3u8Url(
   }
 
   // Already a media playlist
-  onAdDetected?.(detectAdFromPlaylist(text, m3u8Url));
   const cleaned = cleanHlsPlaylist(text);
   const absoluteCleaned = makeHlsUrlsAbsolute(cleaned, m3u8Url);
   const blob = new Blob([absoluteCleaned], { type: "application/vnd.apple.mpegurl" });

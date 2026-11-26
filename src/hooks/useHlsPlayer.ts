@@ -3,10 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { AUTO_QUALITY, type QualityOption } from "@/components/player";
 import {
-  type DetectedAdInfo,
   createCleanNativeM3u8Url,
-  detectAdFromFragments,
-  hasStrippedPreroll,
   PlaylistAdBlockLoader,
 } from "@/lib/adBlockPlaylist";
 
@@ -68,11 +65,6 @@ export function useHlsPlayer({
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
-  const [adInfo, setAdInfo] = useState<DetectedAdInfo>({
-    hasAd: false,
-    adDuration: 0,
-    adRanges: [],
-  });
 
   // Initial resume seek (stable callback so changing initialTime never tears down Hls)
   const seekToInitialTime = useCallback((video: HTMLVideoElement) => {
@@ -110,11 +102,6 @@ export function useHlsPlayer({
     setBufferedEnd(0);
     setAutoNextCountdown(null);
     initialSeekAppliedRef.current = false;
-    setAdInfo({
-      hasAd: Boolean(m3u8Url && /nguonc/i.test(m3u8Url)),
-      adDuration: m3u8Url && /nguonc/i.test(m3u8Url) ? 85 : 0,
-      adRanges: m3u8Url && /nguonc/i.test(m3u8Url) ? [{ start: 0, end: 85 }] : [],
-    });
 
     if (!preferM3U8 || !m3u8Url) {
       setIsLoading(false);
@@ -257,12 +244,7 @@ export function useHlsPlayer({
           const frags = data.details.fragments || [];
           if (!data.details.live && frags.length === 0) {
             fallbackOrShowError("Luồng phim hiện không có dữ liệu phát.");
-            return;
           }
-          const hadStrippedPreroll =
-            hasStrippedPreroll(m3u8Url) || hasStrippedPreroll(data.details.url);
-          const detected = detectAdFromFragments(frags, m3u8Url, { hadStrippedPreroll });
-          setAdInfo(detected);
         }
       });
 
@@ -311,10 +293,8 @@ export function useHlsPlayer({
       const abortController = new AbortController();
       nativeAbortController = abortController;
 
-      // Clean stream, inspect resolved media playlist for ads, and remove known ad segments for Safari/iOS AVPlayer
-      createCleanNativeM3u8Url(m3u8Url, abortController.signal, (detected) => {
-        setAdInfo(detected);
-      })
+      // Clean stream and remove known ad segments for Safari/iOS AVPlayer
+      createCleanNativeM3u8Url(m3u8Url, abortController.signal)
         .then((cleanUrl) => {
           nativeBlobUrl = cleanUrl;
           if (videoRef.current) {
@@ -322,9 +302,6 @@ export function useHlsPlayer({
           }
         })
         .catch(() => {
-          if (m3u8Url && /nguonc/i.test(m3u8Url)) {
-            setAdInfo({ hasAd: true, adDuration: 85, adRanges: [{ start: 0, end: 85 }] });
-          }
           if (videoRef.current) {
             videoRef.current.src = m3u8Url;
           }
@@ -525,6 +502,5 @@ export function useHlsPlayer({
     mutedAutoplayNotice,
     setMutedAutoplayNotice,
     retryPlayback,
-    adInfo,
   };
 }
