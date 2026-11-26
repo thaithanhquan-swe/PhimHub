@@ -6,6 +6,7 @@ import {
   type DetectedAdInfo,
   createCleanNativeM3u8Url,
   detectAdFromFragments,
+  hasStrippedPreroll,
   PlaylistAdBlockLoader,
 } from "@/lib/adBlockPlaylist";
 
@@ -48,6 +49,10 @@ export function useHlsPlayer({
   onTimeUpdateRef.current = onTimeUpdate;
   const onNextEpisodeRef = useRef(onNextEpisode);
   onNextEpisodeRef.current = onNextEpisode;
+  const initialTimeRef = useRef(initialTime);
+  initialTimeRef.current = initialTime;
+  const autoPlayRef = useRef(autoPlay);
+  autoPlayRef.current = autoPlay;
 
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -69,22 +74,20 @@ export function useHlsPlayer({
     adRanges: [],
   });
 
-  // Initial resume seek
-  const seekToInitialTime = useCallback(
-    (video: HTMLVideoElement) => {
-      if (initialTime <= 0 || initialSeekAppliedRef.current) return;
-      const dur = Number.isFinite(video.duration) ? video.duration : 0;
-      const targetTime = dur > 0 ? Math.min(initialTime, Math.max(0, dur - 1)) : initialTime;
-      try {
-        video.currentTime = targetTime;
-        initialSeekAppliedRef.current = true;
-        setCurrentTime(targetTime);
-      } catch (err) {
-        console.warn("Could not resume video at saved position:", err);
-      }
-    },
-    [initialTime],
-  );
+  // Initial resume seek (stable callback so changing initialTime never tears down Hls)
+  const seekToInitialTime = useCallback((video: HTMLVideoElement) => {
+    const targetInitial = initialTimeRef.current;
+    if (targetInitial <= 0 || initialSeekAppliedRef.current) return;
+    const dur = Number.isFinite(video.duration) ? video.duration : 0;
+    const targetTime = dur > 0 ? Math.min(targetInitial, Math.max(0, dur - 1)) : targetInitial;
+    try {
+      video.currentTime = targetTime;
+      initialSeekAppliedRef.current = true;
+      setCurrentTime(targetTime);
+    } catch (err) {
+      console.warn("Could not resume video at saved position:", err);
+    }
+  }, []);
 
   // Resume seek if initialTime changes after metadata loaded
   useEffect(() => {
@@ -172,17 +175,18 @@ export function useHlsPlayer({
         maxBufferLength: 30,
         maxMaxBufferLength: 120,
         maxBufferSize: 60 * 1000 * 1000,
-        maxBufferHole: 2.5,
+        maxBufferHole: 0.5,
         highBufferWatchdogPeriod: 2,
-        nudgeOffset: 0.2,
-        nudgeMaxRetry: 10,
-        maxFragLookUpTolerance: 0.5,
+        nudgeOffset: 0.1,
+        nudgeMaxRetry: 5,
+        maxFragLookUpTolerance: 0.2,
         manifestLoadingTimeOut: 8000,
         manifestLoadingMaxRetry: 2,
         levelLoadingTimeOut: 8000,
         levelLoadingMaxRetry: 2,
         fragLoadingTimeOut: 10000,
-        fragLoadingMaxRetry: 2,
+        fragLoadingMaxRetry: 4,
+        appendErrorMaxRetry: 4,
         startLevel: -1,
         pLoader: PlaylistAdBlockLoader as any,
         fLoader: PlaylistAdBlockLoader as any,
@@ -219,7 +223,7 @@ export function useHlsPlayer({
 
         setQualities([AUTO_QUALITY, ...availableQualities]);
 
-        if (autoPlay) {
+        if (autoPlayRef.current) {
           const playPromise = video.play();
           if (playPromise !== undefined) {
             playPromise
@@ -255,7 +259,9 @@ export function useHlsPlayer({
             fallbackOrShowError("Luồng phim hiện không có dữ liệu phát.");
             return;
           }
-          const detected = detectAdFromFragments(frags, m3u8Url);
+          const hadStrippedPreroll =
+            hasStrippedPreroll(m3u8Url) || hasStrippedPreroll(data.details.url);
+          const detected = detectAdFromFragments(frags, m3u8Url, { hadStrippedPreroll });
           setAdInfo(detected);
         }
       });
@@ -328,7 +334,7 @@ export function useHlsPlayer({
         setIsLoading(false);
         setDuration(video.duration || 0);
         seekToInitialTime(video);
-        if (autoPlay) {
+        if (autoPlayRef.current) {
           video
             .play()
             .then(() => {
@@ -378,7 +384,7 @@ export function useHlsPlayer({
       setError("Trình duyệt không hỗ trợ phát định dạng video này.");
       setIsLoading(false);
     }
-  }, [m3u8Url, preferM3U8, autoPlay, embedUrl, seekToInitialTime, videoRef, retryNonce]);
+  }, [m3u8Url, preferM3U8, embedUrl, videoRef, retryNonce]);
 
   // Continuous stall watchdog: if isLoading remains true for 15s (including mid-stream stalls or retries),
   // automatically fall back to embed or show an error instead of spinning indefinitely.
@@ -388,6 +394,12 @@ export function useHlsPlayer({
     }
 
     const stallTimer = window.setTimeout(() => {
+      const v = videoRef.current;
+      // Do not tear down HLS if video actually recovered playback and is ready
+      if (v && !v.paused && v.readyState >= 3) {
+        setIsLoading(false);
+        return;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -401,7 +413,7 @@ export function useHlsPlayer({
     }, 15000);
 
     return () => window.clearTimeout(stallTimer);
-  }, [isLoading, error, preferM3U8, m3u8Url, embedUrl]);
+  }, [isLoading, error, preferM3U8, m3u8Url, embedUrl, videoRef]);
 
   // Video time, buffer, and auto-next listeners
   useEffect(() => {
@@ -451,7 +463,12 @@ export function useHlsPlayer({
     const handleLoadedData = () => setIsLoading(false);
     const handleEnded = () => {
       setIsPlaying(false);
-      if (hasNextEpisode && onNextEpisodeRef.current) {
+      // Only auto-advance when playback genuinely reached the end (not on premature MediaSource errors)
+      const reachedRealEnd =
+        !Number.isFinite(video.duration) ||
+        video.duration <= 0 ||
+        video.currentTime >= Math.max(0, video.duration - 5);
+      if (hasNextEpisode && onNextEpisodeRef.current && reachedRealEnd) {
         onNextEpisodeRef.current();
       }
     };

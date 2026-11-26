@@ -40,6 +40,7 @@ describe("AdBlock Playlist Filter", () => {
     expect(isAdSegmentUrl("ak4K4adp.ts")).toBe(false); // contains 'ad' in random hash
     expect(isAdSegmentUrl("ep1_001.ts")).toBe(false);
     expect(isAdSegmentUrl("chunk-1080p-001.ts")).toBe(false);
+    expect(isAdSegmentUrl("https://cdn.example.com/v2/movie_slug_2025/0001.ts")).toBe(false);
     expect(isAdSegmentUrl("5U7nPKi3.ts")).toBe(false);
     expect(isAdSegmentUrl("mL67UyKI.ts")).toBe(false);
     expect(isAdSegmentUrl("kv9LLXEp.ts")).toBe(false);
@@ -375,6 +376,26 @@ describe("AdBlock Playlist Filter", () => {
         { start: 0, end: 6 },
         { start: 206, end: 241 },
       ]);
+    });
+
+    it("does not treat a long cold open (> 95s) before a short spliced ad as part of the ad", () => {
+      const coldOpenPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:120.0,",
+        "cold_open.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:20.0,",
+        "spliced_clip.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:600.0,",
+        "main_episode.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(coldOpenPlaylist, "https://cdn.phimapi.com/movie/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adRanges).toEqual([{ start: 120, end: 140 }]);
     });
   });
 
