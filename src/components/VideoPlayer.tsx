@@ -75,7 +75,6 @@ export function VideoPlayer({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("main");
-  const [introSkipDismissed, setIntroSkipDismissed] = useState(false);
 
   // Timeline hover
   const [hoverTime, setHoverTime] = useState<number | null>(null);
@@ -86,10 +85,6 @@ export function VideoPlayer({
   useEffect(() => {
     setUseEmbedFallback(preferEmbed);
   }, [preferEmbed]);
-
-  useEffect(() => {
-    setIntroSkipDismissed(false);
-  }, [m3u8Url]);
 
   const triggerToast = useCallback((msg: string) => {
     if (toastTimerRef.current) {
@@ -269,14 +264,6 @@ export function VideoPlayer({
     adRanges: effectiveAdRanges,
   });
 
-  const showIntroFallback =
-    hasAd !== false &&
-    activeAdTarget === null &&
-    !isScreenLocked &&
-    !introSkipDismissed &&
-    duration > 180 &&
-    currentTime < 240;
-
   const handleSkipAd = useCallback(
     (seconds?: number) => {
       const video = videoRef.current;
@@ -291,18 +278,6 @@ export function VideoPlayer({
     },
     [activeAdTarget, effectiveAdDuration, resetHideControlsTimer, setCurrentTime, triggerToast],
   );
-
-  const handleSkipIntro = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const dur = Number.isFinite(video.duration) ? video.duration : 0;
-    const rawTarget = video.currentTime + 15;
-    const target = dur > 10 ? Math.min(dur - 5, rawTarget) : rawTarget;
-    video.currentTime = target;
-    setCurrentTime(target);
-    triggerToast("Đã tua qua 15s giới thiệu / quảng cáo");
-    resetHideControlsTimer();
-  }, [resetHideControlsTimer, setCurrentTime, triggerToast]);
 
   function changeVolume(newVol: number) {
     const video = videoRef.current;
@@ -471,9 +446,6 @@ export function VideoPlayer({
           if (activeAdTarget !== null) {
             e.preventDefault();
             handleSkipAd(activeAdTarget);
-          } else if (showIntroFallback) {
-            e.preventDefault();
-            handleSkipIntro();
           }
           break;
         case "n":
@@ -494,9 +466,7 @@ export function VideoPlayer({
     isScreenLocked,
     handleToggleScreenOrientation,
     handleSkipAd,
-    handleSkipIntro,
     activeAdTarget,
-    showIntroFallback,
   ]);
 
   // Timeline scrub handlers
@@ -694,7 +664,7 @@ export function VideoPlayer({
         onTimelineMouseLeave={() => setHoverTime(null)}
       />
 
-      {/* Netflix-style Floating Skip Ad / Skip Intro Button */}
+      {/* Netflix-style Floating Skip Ad Button (only visible during detected ads) */}
       <SkipAdButton
         currentTime={currentTime}
         duration={duration}
@@ -702,10 +672,7 @@ export function VideoPlayer({
         hasAd={effectiveHasAd}
         adDuration={effectiveAdDuration}
         adRanges={effectiveAdRanges}
-        showIntroFallback={showIntroFallback}
         onSkipAd={handleSkipAd}
-        onSkipIntro={handleSkipIntro}
-        onDismissIntroFallback={() => setIntroSkipDismissed(true)}
       />
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}

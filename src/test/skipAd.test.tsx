@@ -206,29 +206,35 @@ describe("Netflix-style Skip Ad Button", () => {
     expect(handleSkip).toHaveBeenCalledWith(185);
   });
 
-  it("renders intro skip fallback (+15s) for long continuous streams without HLS ad tags and allows dismissing", () => {
+  it("hides SkipAdButton immediately once the ad finishes (at and past adRange end)", () => {
     const handleSkip = vi.fn();
-    const handleSkipIntro = vi.fn();
-    const handleDismiss = vi.fn();
+    const adRanges = [{ start: 100, end: 130 }];
 
-    render(
+    const { container, rerender } = render(
       <SkipAdButton
-        currentTime={108}
+        currentTime={115}
         duration={1431}
         isScreenLocked={false}
-        hasAd={false}
-        showIntroFallback={true}
+        hasAd={true}
+        adRanges={adRanges}
         onSkipAd={handleSkip}
-        onSkipIntro={handleSkipIntro}
-        onDismissIntroFallback={handleDismiss}
       />,
     );
 
-    expect(screen.getByTestId("skip-intro-button")).toBeDefined();
-    fireEvent.click(screen.getByText("Bỏ qua giới thiệu").closest("button")!);
-    expect(handleSkipIntro).toHaveBeenCalled();
+    expect(screen.getByTestId("skip-ad-button")).toBeDefined();
 
-    fireEvent.click(screen.getByLabelText("Ẩn nút bỏ qua giới thiệu"));
-    expect(handleDismiss).toHaveBeenCalled();
+    // Ad finishes at 130s -> button turns off immediately
+    rerender(
+      <SkipAdButton
+        currentTime={130}
+        duration={1431}
+        isScreenLocked={false}
+        hasAd={true}
+        adRanges={adRanges}
+        onSkipAd={handleSkip}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("skip-ad-button")).toBeNull();
   });
 });
