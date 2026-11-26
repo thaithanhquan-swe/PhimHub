@@ -296,11 +296,11 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     const dur = Number.isFinite(video.duration) ? video.duration : 0;
-    const rawTarget = video.currentTime + 30;
+    const rawTarget = video.currentTime + 15;
     const target = dur > 10 ? Math.min(dur - 5, rawTarget) : rawTarget;
     video.currentTime = target;
     setCurrentTime(target);
-    triggerToast("Đã tua qua 30s giới thiệu / quảng cáo");
+    triggerToast("Đã tua qua 15s giới thiệu / quảng cáo");
     resetHideControlsTimer();
   }, [resetHideControlsTimer, setCurrentTime, triggerToast]);
 

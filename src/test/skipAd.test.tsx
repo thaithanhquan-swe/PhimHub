@@ -206,7 +206,7 @@ describe("Netflix-style Skip Ad Button", () => {
     expect(handleSkip).toHaveBeenCalledWith(185);
   });
 
-  it("renders intro skip fallback (+30s) for long continuous streams without HLS ad tags and allows dismissing", () => {
+  it("renders intro skip fallback (+15s) for long continuous streams without HLS ad tags and allows dismissing", () => {
     const handleSkip = vi.fn();
     const handleSkipIntro = vi.fn();
     const handleDismiss = vi.fn();

@@ -97,11 +97,11 @@ export function SkipAdButton({
           type="button"
           onClick={onSkipIntro}
           className="group flex items-center gap-2 px-3.5 py-2 sm:px-4.5 sm:py-2.5 text-xs sm:text-sm font-bold tracking-wide text-white transition-colors duration-150 hover:bg-white hover:text-black active:scale-95 cursor-pointer"
-          title="Tua nhanh 30 giây đoạn giới thiệu / quảng cáo (Phím tắt S)"
+          title="Tua nhanh 15 giây đoạn giới thiệu / quảng cáo (Phím tắt S)"
         >
           <span>Bỏ qua giới thiệu</span>
           <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold group-hover:bg-black/10">
-            +30s
+            +15s
           </span>
           <FastForward className="size-3.5 sm:size-4 fill-current transition-transform duration-150 group-hover:translate-x-0.5" />
         </button>
