@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { AUTO_QUALITY, type QualityOption } from "@/components/player";
 import {
+  type DetectedAdInfo,
   createCleanNativeM3u8Url,
-  detectAdFromPlaylist,
-  isAdSegmentUrl,
+  detectAdFromFragments,
   PlaylistAdBlockLoader,
 } from "@/lib/adBlockPlaylist";
 
@@ -63,9 +63,10 @@ export function useHlsPlayer({
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
-  const [adInfo, setAdInfo] = useState<{ hasAd: boolean; adDuration: number }>({
+  const [adInfo, setAdInfo] = useState<DetectedAdInfo>({
     hasAd: false,
     adDuration: 0,
+    adRanges: [],
   });
 
   // Initial resume seek
@@ -109,6 +110,7 @@ export function useHlsPlayer({
     setAdInfo({
       hasAd: Boolean(m3u8Url && /nguonc/i.test(m3u8Url)),
       adDuration: m3u8Url && /nguonc/i.test(m3u8Url) ? 85 : 0,
+      adRanges: m3u8Url && /nguonc/i.test(m3u8Url) ? [{ start: 0, end: 85 }] : [],
     });
 
     if (!preferM3U8 || !m3u8Url) {
@@ -253,39 +255,8 @@ export function useHlsPlayer({
             fallbackOrShowError("Luồng phim hiện không có dữ liệu phát.");
             return;
           }
-          const initialCC = frags[0]?.cc ?? 0;
-          let detectedAdEnd: number | null = null;
-
-          for (let i = 0; i < frags.length; i++) {
-            const frag = frags[i];
-            if (frag.start > 130) break;
-
-            // Detect discontinuity transition in the first 130 seconds
-            if (frag.start >= 10 && frag.cc > initialCC) {
-              detectedAdEnd = Math.round(frag.start);
-              break;
-            }
-
-            if (
-              frag.start >= 10 &&
-              frag.tagList?.some((tags) => tags.includes("EXT-X-DISCONTINUITY"))
-            ) {
-              detectedAdEnd = Math.round(frag.start);
-              break;
-            }
-
-            if (frag.url && isAdSegmentUrl(frag.url)) {
-              detectedAdEnd = Math.max(detectedAdEnd || 0, Math.round(frag.start + frag.duration));
-            }
-          }
-
-          if (detectedAdEnd && detectedAdEnd > 0) {
-            setAdInfo({ hasAd: true, adDuration: detectedAdEnd });
-          } else if (m3u8Url && /nguonc/i.test(m3u8Url)) {
-            setAdInfo({ hasAd: true, adDuration: 85 });
-          } else {
-            setAdInfo({ hasAd: false, adDuration: 0 });
-          }
+          const detected = detectAdFromFragments(frags, m3u8Url);
+          setAdInfo(detected);
         }
       });
 
@@ -334,22 +305,10 @@ export function useHlsPlayer({
       const abortController = new AbortController();
       nativeAbortController = abortController;
 
-      // Clean stream and remove ads for native Apple HLS / Safari AVPlayer
-      if (m3u8Url && !m3u8Url.startsWith("offline://")) {
-        fetch(m3u8Url, { signal: abortController.signal })
-          .then((res) => res.text())
-          .then((text) => {
-            const detected = detectAdFromPlaylist(text, m3u8Url);
-            setAdInfo(detected);
-          })
-          .catch(() => {
-            if (m3u8Url && /nguonc/i.test(m3u8Url)) {
-              setAdInfo({ hasAd: true, adDuration: 85 });
-            }
-          });
-      }
-
-      createCleanNativeM3u8Url(m3u8Url, abortController.signal)
+      // Clean stream, inspect resolved media playlist for ads, and remove known ad segments for Safari/iOS AVPlayer
+      createCleanNativeM3u8Url(m3u8Url, abortController.signal, (detected) => {
+        setAdInfo(detected);
+      })
         .then((cleanUrl) => {
           nativeBlobUrl = cleanUrl;
           if (videoRef.current) {
@@ -357,6 +316,9 @@ export function useHlsPlayer({
           }
         })
         .catch(() => {
+          if (m3u8Url && /nguonc/i.test(m3u8Url)) {
+            setAdInfo({ hasAd: true, adDuration: 85, adRanges: [{ start: 0, end: 85 }] });
+          }
           if (videoRef.current) {
             videoRef.current.src = m3u8Url;
           }

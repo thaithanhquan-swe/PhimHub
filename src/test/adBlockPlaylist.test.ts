@@ -348,6 +348,34 @@ describe("AdBlock Playlist Filter", () => {
       const res = detectAdFromPlaylist(adPlaylist);
       expect(res.hasAd).toBe(true);
     });
+
+    it("detects short (< 10s) pre-roll ads and mid-roll discontinuity ad ranges (> 130s)", () => {
+      const mixedPlaylist = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXTINF:6.0,",
+        "preroll_bump.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:100.0,",
+        "movie_part1_a.ts",
+        "#EXTINF:100.0,",
+        "movie_part1_b.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:35.0,",
+        "midroll_sponsor.ts",
+        "#EXT-X-DISCONTINUITY",
+        "#EXTINF:300.0,",
+        "movie_part2.ts",
+        "#EXT-X-ENDLIST",
+      ].join("\n");
+
+      const res = detectAdFromPlaylist(mixedPlaylist, "https://cdn.phimapi.com/movie/index.m3u8");
+      expect(res.hasAd).toBe(true);
+      expect(res.adRanges).toEqual([
+        { start: 0, end: 6 },
+        { start: 206, end: 241 },
+      ]);
+    });
   });
 
   it("never returns an empty 0-segment playlist when all segments match ad patterns", () => {

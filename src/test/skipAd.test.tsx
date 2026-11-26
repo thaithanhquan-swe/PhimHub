@@ -169,4 +169,66 @@ describe("Netflix-style Skip Ad Button", () => {
     expect(screen.getByTestId("skip-ad-button")).toBeDefined();
     expect(screen.getByText("Bỏ qua quảng cáo")).toBeDefined();
   });
+
+  it("renders SkipAdButton during mid-roll or post-cold-open adRanges (e.g. at 01:48)", () => {
+    const handleSkip = vi.fn();
+    const adRanges = [{ start: 100, end: 185 }];
+
+    const { rerender } = render(
+      <SkipAdButton
+        currentTime={45}
+        duration={1400}
+        isScreenLocked={false}
+        hasAd={true}
+        adRanges={adRanges}
+        onSkipAd={handleSkip}
+      />,
+    );
+
+    // Before the ad range -> hidden
+    expect(screen.queryByTestId("skip-ad-button")).toBeNull();
+
+    // At 108s (01:48) inside [100, 185] -> visible and skips to 185
+    rerender(
+      <SkipAdButton
+        currentTime={108}
+        duration={1400}
+        isScreenLocked={false}
+        hasAd={true}
+        adRanges={adRanges}
+        onSkipAd={handleSkip}
+      />,
+    );
+
+    const button = screen.getByTestId("skip-ad-button").querySelector("button");
+    expect(button).not.toBeNull();
+    fireEvent.click(button!);
+    expect(handleSkip).toHaveBeenCalledWith(185);
+  });
+
+  it("renders intro skip fallback (+30s) for long continuous streams without HLS ad tags and allows dismissing", () => {
+    const handleSkip = vi.fn();
+    const handleSkipIntro = vi.fn();
+    const handleDismiss = vi.fn();
+
+    render(
+      <SkipAdButton
+        currentTime={108}
+        duration={1431}
+        isScreenLocked={false}
+        hasAd={false}
+        showIntroFallback={true}
+        onSkipAd={handleSkip}
+        onSkipIntro={handleSkipIntro}
+        onDismissIntroFallback={handleDismiss}
+      />,
+    );
+
+    expect(screen.getByTestId("skip-intro-button")).toBeDefined();
+    fireEvent.click(screen.getByText("Bỏ qua giới thiệu").closest("button")!);
+    expect(handleSkipIntro).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Ẩn nút bỏ qua giới thiệu"));
+    expect(handleDismiss).toHaveBeenCalled();
+  });
 });

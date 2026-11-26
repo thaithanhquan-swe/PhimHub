@@ -10,6 +10,7 @@ import {
   AssistiveTouchLock,
   DoubleTapFeedback,
   EmbedPlayerFallback,
+  getActiveAdTarget,
   NextEpisodePrompt,
   PlayerBottomControls,
   PlayerCenterControls,
@@ -74,6 +75,7 @@ export function VideoPlayer({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("main");
+  const [introSkipDismissed, setIntroSkipDismissed] = useState(false);
 
   // Timeline hover
   const [hoverTime, setHoverTime] = useState<number | null>(null);
@@ -84,6 +86,10 @@ export function VideoPlayer({
   useEffect(() => {
     setUseEmbedFallback(preferEmbed);
   }, [preferEmbed]);
+
+  useEffect(() => {
+    setIntroSkipDismissed(false);
+  }, [m3u8Url]);
 
   const triggerToast = useCallback((msg: string) => {
     if (toastTimerRef.current) {
@@ -253,12 +259,29 @@ export function VideoPlayer({
 
   const effectiveHasAd = hasAd !== undefined ? hasAd : adInfo.hasAd;
   const effectiveAdDuration = adDuration ?? (adInfo.adDuration > 0 ? adInfo.adDuration : 85);
+  const effectiveAdRanges = hasAd !== undefined ? undefined : adInfo.adRanges;
+
+  const activeAdTarget = getActiveAdTarget({
+    currentTime,
+    duration,
+    hasAd: effectiveHasAd,
+    adDuration: effectiveAdDuration,
+    adRanges: effectiveAdRanges,
+  });
+
+  const showIntroFallback =
+    hasAd !== false &&
+    activeAdTarget === null &&
+    !isScreenLocked &&
+    !introSkipDismissed &&
+    duration > 180 &&
+    currentTime < 240;
 
   const handleSkipAd = useCallback(
     (seconds?: number) => {
       const video = videoRef.current;
       if (!video) return;
-      const target = seconds ?? effectiveAdDuration;
+      const target = seconds ?? activeAdTarget ?? effectiveAdDuration;
       const dur = Number.isFinite(video.duration) ? video.duration : 0;
       const maxTime = dur > 0 ? Math.min(dur, target) : target;
       video.currentTime = maxTime;
@@ -266,8 +289,20 @@ export function VideoPlayer({
       triggerToast("Đã bỏ qua quảng cáo");
       resetHideControlsTimer();
     },
-    [effectiveAdDuration, resetHideControlsTimer, triggerToast],
+    [activeAdTarget, effectiveAdDuration, resetHideControlsTimer, setCurrentTime, triggerToast],
   );
+
+  const handleSkipIntro = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const dur = Number.isFinite(video.duration) ? video.duration : 0;
+    const rawTarget = video.currentTime + 30;
+    const target = dur > 10 ? Math.min(dur - 5, rawTarget) : rawTarget;
+    video.currentTime = target;
+    setCurrentTime(target);
+    triggerToast("Đã tua qua 30s giới thiệu / quảng cáo");
+    resetHideControlsTimer();
+  }, [resetHideControlsTimer, setCurrentTime, triggerToast]);
 
   function changeVolume(newVol: number) {
     const video = videoRef.current;
@@ -433,9 +468,12 @@ export function VideoPlayer({
           changeVolume(Math.max(0, Math.round((volume - 0.05) * 100) / 100));
           break;
         case "s":
-          if (effectiveHasAd && currentTime < effectiveAdDuration) {
+          if (activeAdTarget !== null) {
             e.preventDefault();
-            handleSkipAd(effectiveAdDuration);
+            handleSkipAd(activeAdTarget);
+          } else if (showIntroFallback) {
+            e.preventDefault();
+            handleSkipIntro();
           }
           break;
         case "n":
@@ -456,9 +494,9 @@ export function VideoPlayer({
     isScreenLocked,
     handleToggleScreenOrientation,
     handleSkipAd,
-    effectiveHasAd,
-    currentTime,
-    effectiveAdDuration,
+    handleSkipIntro,
+    activeAdTarget,
+    showIntroFallback,
   ]);
 
   // Timeline scrub handlers
@@ -656,14 +694,18 @@ export function VideoPlayer({
         onTimelineMouseLeave={() => setHoverTime(null)}
       />
 
-      {/* Netflix-style Floating Skip Ad Button (early playback / intro ad) */}
+      {/* Netflix-style Floating Skip Ad / Skip Intro Button */}
       <SkipAdButton
         currentTime={currentTime}
         duration={duration}
         isScreenLocked={isScreenLocked}
         hasAd={effectiveHasAd}
         adDuration={effectiveAdDuration}
+        adRanges={effectiveAdRanges}
+        showIntroFallback={showIntroFallback}
         onSkipAd={handleSkipAd}
+        onSkipIntro={handleSkipIntro}
+        onDismissIntroFallback={() => setIntroSkipDismissed(true)}
       />
 
       {/* Netflix-style "Next Episode" Prompt in last 25s */}
